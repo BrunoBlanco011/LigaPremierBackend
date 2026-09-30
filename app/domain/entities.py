@@ -35,8 +35,9 @@ class Tournament(Entity):
     points_loss: int = 0
 
 
-class Team(Entity):
-    tournament_id: UUID
+class Club(Entity):
+    """Equipo permanente de la liga: se inscribe a uno o varios torneos."""
+
     name: str
     coach_name: str | None = None
     coach_user_id: UUID | None = None
@@ -44,8 +45,23 @@ class Team(Entity):
     logo_path: str | None = None
 
 
+class Team(Entity):
+    """Inscripcion de un club a un torneo.
+
+    `name`, `logo_url`, `coach_name` y `coach_user_id` son de solo lectura:
+    vienen del club (vista `team_details`).
+    """
+
+    tournament_id: UUID
+    club_id: UUID
+    name: str = ""
+    logo_url: str | None = None
+    coach_name: str | None = None
+    coach_user_id: UUID | None = None
+
+
 class Player(Entity):
-    team_id: UUID
+    club_id: UUID
     full_name: str
     jersey_number: int | None = None
     is_active: bool = True
@@ -84,6 +100,7 @@ class StandingAdjustment(Entity):
 class PlayerMatchStats(Entity):
     match_id: UUID
     player_id: UUID
+    team_id: UUID
     attended: bool = True
     touchdowns: int = 0
     td_passes: int = 0

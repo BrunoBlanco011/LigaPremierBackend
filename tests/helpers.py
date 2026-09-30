@@ -58,11 +58,19 @@ class Env:
         assert r.status_code == 201, r.text
         return r.json()
 
-    def team(self, tournament_id: str, name: str, **kw) -> dict:
-        r = self.client.post(f"/api/v1/tournaments/{tournament_id}/teams", json={"name": name, **kw},
-                             headers=self.as_admin)
+    def club(self, name: str, **kw) -> dict:
+        r = self.client.post("/api/v1/clubs", json={"name": name, **kw}, headers=self.as_admin)
         assert r.status_code == 201, r.text
         return r.json()
+
+    def team(self, tournament_id: str, name: str, **club_kw) -> dict:
+        """Inscribe al torneo el club `name` (lo crea si no existe) y devuelve la inscripcion."""
+        clubs = {c["name"]: c for c in self.client.get("/api/v1/clubs").json()}
+        club = clubs.get(name) or self.club(name, **club_kw)
+        r = self.client.post(f"/api/v1/tournaments/{tournament_id}/teams", json={"club_ids": [club["id"]]},
+                             headers=self.as_admin)
+        assert r.status_code == 201, r.text
+        return r.json()[0]
 
     def match(self, tournament_id: str, home: str, away: str, **kw) -> dict:
         r = self.client.post(f"/api/v1/tournaments/{tournament_id}/matches",

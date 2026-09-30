@@ -8,7 +8,7 @@ Reglas (basadas en el ROL DE JUEGOS de la liga):
 - A favor / En contra = puntos anotados / recibidos; Diferencia = AF - EC.
 - Puntos = JG*points_win + JP*points_loss + ajustes manuales.
 - En un forfeit pierde `forfeit_loser_team_id` con marcador fijo 21-0.
-- Desempate: puntos, diferencia, puntos a favor, menos puntos en contra, nombre.
+- Desempate: puntos, puntos a favor, diferencia, menos puntos en contra, nombre.
 """
 
 from collections.abc import Iterable
@@ -90,7 +90,7 @@ def compute_standings(
 
     ordered = sorted(
         rows.values(),
-        key=lambda r: (-r.points, -r.point_difference, -r.points_for, r.points_against, r.team_name.lower()),
+        key=lambda r: (-r.points, -r.points_for, -r.point_difference, r.points_against, r.team_name.lower()),
     )
     for position, row in enumerate(ordered, start=1):
         row.position = position

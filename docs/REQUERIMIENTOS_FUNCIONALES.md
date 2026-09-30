@@ -1,6 +1,6 @@
 # Liga Premier – Requerimientos funcionales (guía para el frontend)
 
-Versión 0.2 · 30 de septiembre de 2026 · Backend: FastAPI + Supabase
+Versión 0.3 · 30 de septiembre de 2026 · Backend: FastAPI + Supabase
 
 Este documento describe **qué debe poder hacer cada tipo de usuario** y **con qué endpoint del backend se
 resuelve cada acción**. Es la referencia para construir las pantallas. El contrato exacto (tipos, campos
@@ -16,18 +16,31 @@ La aplicación tiene tres áreas:
 | Área | Quién entra | Propósito |
 |------|-------------|-----------|
 | **Sitio público** | Cualquier persona, sin iniciar sesión | Consultar torneos, rol de juegos, resultados, tabla de posiciones, equipos, rosters y líderes de estadísticas (similar a sportwey.com) |
-| **Panel de administrador** | Usuarios con rol `admin` | Administrar todo: torneos, equipos, jornadas, partidos, resultados, estadísticas, finanzas y usuarios |
-| **Panel de coach** | Usuarios con rol `coach` | Administrar los jugadores de su(s) equipo(s) |
+| **Panel de administrador** | Usuarios con rol `admin` | Administrar todo: clubes, torneos, inscripciones, jornadas, partidos, resultados, estadísticas, finanzas y usuarios |
+| **Panel de coach** | Usuarios con rol `coach` | Administrar los jugadores de su(s) club(es) |
+
+### 1.0 Clubes y equipos (concepto clave)
+
+- **Club:** es el equipo permanente de la liga (TOROS, DOLPHINS JR…). Tiene nombre, logo, entrenador,
+  coach asignado y **su plantilla de jugadores, que se conserva de un torneo a otro**.
+- **Equipo (inscripción):** es un club inscrito a un torneo específico. Los partidos, la tabla, las
+  estadísticas por torneo y las finanzas se ligan a la inscripción (`team_id`).
+- Flujo: se crean los clubes una sola vez → en cada torneo nuevo se **inscriben** los clubes que
+  participan → se genera el rol de juegos.
+- Un equipo (inscripción) muestra el nombre y logo de su club: si el club cambia su logo, se actualiza
+  en todos sus torneos.
+- Gracias a esto existe el **historial**: torneos jugados por cada club y estadísticas de carrera de cada jugador.
 
 ### 1.1 Roles y permisos
 
 | Acción | Público | Coach | Admin |
 |--------|:-------:|:-----:|:-----:|
 | Ver torneos, equipos, jornadas, partidos, tabla, estadísticas | ✅ | ✅ | ✅ |
-| Ver roster de un equipo (jugadores activos) | ✅ | ✅ | ✅ |
-| Ver jugadores dados de baja de un equipo | ❌ | Solo su equipo | ✅ |
-| Alta / edición / baja / borrado de jugadores | ❌ | Solo su equipo | ✅ |
-| CRUD de torneos, equipos, logos, jornadas, partidos | ❌ | ❌ | ✅ |
+| Ver plantilla de un club (jugadores activos) e historial | ✅ | ✅ | ✅ |
+| Ver jugadores dados de baja de un club | ❌ | Solo su club | ✅ |
+| Alta / edición / baja / borrado de jugadores | ❌ | Solo su club | ✅ |
+| Transferir un jugador a otro club | ❌ | ❌ | ✅ |
+| CRUD de clubes (y logos), torneos, inscripciones, jornadas, partidos | ❌ | ❌ | ✅ |
 | Generar rol de juegos | ❌ | ❌ | ✅ |
 | Capturar / corregir resultados y ajustes de tabla | ❌ | ❌ | ✅ |
 | Capturar estadísticas de jugadores por partido | ❌ | ❌ | ✅ |
@@ -154,8 +167,8 @@ Todas las respuestas de error traen `detail`:
 
 - Si `adjustment_points ≠ 0`, mostrar un indicador junto a los puntos (ej. "−2 *") con tooltip que
   liste `adjustment_reasons` (ej. "Adeudo de arbitraje").
-- Criterios de orden (informativo para mostrar al pie de la tabla): puntos → diferencia → puntos a
-  favor → menos puntos en contra. *(Pendiente de decisión: enfrentamiento directo, ver §9).*
+- Criterios de orden (mostrar al pie de la tabla): **puntos → puntos a favor → diferencia → menos
+  puntos en contra**.
 
 ### RF-13 Rol de juegos (calendario)
 - **Endpoints:** `GET /tournaments/{id}/rounds` (jornadas) y `GET /tournaments/{id}/matches?round_id={roundId}`.
@@ -178,13 +191,22 @@ Todas las respuestas de error traen `detail`:
   (cruzar `player_id` con los rosters de ambos equipos).
 
 ### RF-16 Equipos del torneo
-- **Endpoint:** `GET /tournaments/{id}/teams`.
+- **Endpoint:** `GET /tournaments/{id}/teams` → inscripciones con `id` (team_id), `club_id`, `name`,
+  `logo_url` y `coach_name`.
 - Tarjetas con logo, nombre y nombre del entrenador (`coach_name`).
 
-### RF-17 Perfil de equipo
-- **Endpoints:** `GET /teams/{id}`, `GET /teams/{id}/players`,
+### RF-17 Perfil de equipo en el torneo
+- **Endpoints:** `GET /teams/{id}`, `GET /teams/{id}/players` (plantilla de su club),
   `GET /tournaments/{tid}/matches?team_id={id}` y `GET /tournaments/{tid}/player-stats?team_id={id}`.
-- Muestra el roster (número de jersey y nombre), los partidos del equipo y las estadísticas de sus jugadores.
+- Muestra la plantilla (número de jersey y nombre), los partidos del equipo y las estadísticas de sus
+  jugadores en ese torneo. Enlazar al perfil del club (`club_id`).
+
+### RF-17b Perfil de club e historial
+- **Endpoints:** `GET /clubs/{id}`, `GET /clubs/{id}/players` y `GET /clubs/{id}/history`.
+- `history` devuelve, del torneo más reciente al más antiguo:
+  `{ tournament, team_id, standing, teams_count }`, donde `standing` es su renglón de la tabla
+  (posición, JG, JP, puntos…). Ej.: "Apertura 2026 – 3.º de 12 (8-2, 16 pts)".
+- Lista de clubes de la liga: `GET /clubs`.
 
 ### RF-18 Líderes de estadísticas
 - **Endpoint:** `GET /tournaments/{id}/player-stats?sort_by={campo}&limit=10`.
@@ -195,8 +217,10 @@ Todas las respuestas de error traen `detail`:
   Pases de anotación, Intercepciones, Capturas, Tackles.
 
 ### RF-19 Perfil de jugador
-- **Endpoints:** `GET /players/{id}` y `GET /players/{id}/stats` → `{ totals, matches }`.
-- Totales del jugador y desglose partido por partido.
+- **Endpoints:** `GET /players/{id}` y `GET /players/{id}/stats` → `{ totals, by_tournament, matches }`.
+- `totals`: estadísticas de **toda su carrera** en la liga (`team_name` = club actual).
+- `by_tournament`: una fila por torneo jugado (`tournament_name` + totales con el equipo de ese torneo).
+- `matches`: desglose partido por partido.
 
 ---
 
@@ -219,25 +243,35 @@ Todas las respuestas de error traen `detail`:
 | `points_win` | No | Puntos por victoria, por defecto 2 |
 | `points_loss` | No | Puntos por derrota, por defecto 0 |
 
-- **Eliminar:** pedir confirmación con advertencia clara, porque **borra en cascada** equipos, jugadores,
-  jornadas, partidos, estadísticas y finanzas del torneo. Sugerencia: preferir cambiar el estado a
+- **Eliminar:** pedir confirmación con advertencia clara, porque **borra en cascada** las inscripciones,
+  jornadas, partidos, estadísticas y finanzas del torneo (los clubes y sus jugadores se conservan). Sugerencia: preferir cambiar el estado a
   `cancelled` o `finished`.
 
-### 5.2 Equipos
+### 5.2 Clubes e inscripciones
 
-#### RF-21 CRUD de equipos del torneo
-- **Endpoints:** `GET/POST /tournaments/{id}/teams`, `GET/PATCH/DELETE /teams/{id}`.
-- **Formulario:** `name` (obligatorio, único dentro del torneo, sin distinguir mayúsculas),
-  `coach_name` (nombre del entrenador para mostrar) y `coach_user_id` (cuenta de coach que podrá
-  administrar el roster, opcional).
+#### RF-21 CRUD de clubes
+- **Endpoints:** `GET/POST /clubs`, `GET/PATCH/DELETE /clubs/{id}`.
+- **Formulario:** `name` (obligatorio, único en la liga, sin distinguir mayúsculas), `coach_name`
+  (nombre del entrenador para mostrar) y `coach_user_id` (cuenta de coach que podrá administrar la
+  plantilla, opcional).
 - Para el selector de `coach_user_id`, usar `GET /users?role=coach`.
 - Nombre duplicado → `409`.
+- **Eliminar:** solo se permite si el club nunca se ha inscrito a un torneo (`409`), para no perder el
+  historial. Si el club deja la liga, simplemente no se inscribe a los torneos nuevos.
 
-#### RF-22 Logo del equipo
-- **Endpoint:** `POST /teams/{id}/logo` (multipart/form-data, campo `file`).
+#### RF-22 Logo del club
+- **Endpoint:** `POST /clubs/{id}/logo` (multipart/form-data, campo `file`).
 - Formatos permitidos: PNG, JPG, WEBP y SVG. Tamaño máximo: 2 MB. Validar también en el cliente.
-- Responde el equipo con `logo_url` nuevo. Subir otro logo reemplaza el anterior.
+- Responde el club con `logo_url` nuevo. Subir otro logo reemplaza el anterior en todos sus torneos.
 - Mostrar una vista previa antes de subir.
+
+#### RF-22b Inscribir clubes a un torneo
+- **Endpoints:** `GET /tournaments/{id}/teams`, `POST /tournaments/{id}/teams`, `DELETE /teams/{id}`.
+- **Inscribir:** `{ "club_ids": ["...", "..."] }` → devuelve las inscripciones creadas.
+  Pantalla sugerida: lista de clubes con casillas para marcar los que participan.
+- Un club ya inscrito en ese torneo → `409`.
+- **Dar de baja una inscripción** (`DELETE /teams/{id}`): borra en cascada sus partidos, estadísticas y
+  finanzas **de ese torneo**. Pedir confirmación; lo normal es hacerlo antes de generar el rol de juegos.
 
 ### 5.3 Jornadas y rol de juegos
 
@@ -260,7 +294,7 @@ Todas las respuestas de error traen `detail`:
   (reenviar con `replace_existing: true`) tras una confirmación.
 - Si ya hay partidos jugados, no se puede regenerar (`409`).
 - Requiere al menos 2 equipos (`422`).
-- **Flujo sugerido:** registrar todos los equipos → generar rol → ajustar fecha, hora y sede de cada partido (RF-25).
+- **Flujo sugerido:** inscribir los clubes (RF-22b) → generar rol → ajustar fecha, hora y sede de cada partido (RF-25).
 
 #### RF-24 CRUD manual de jornadas
 - **Endpoints:** `GET/POST /tournaments/{id}/rounds`, `GET/PATCH/DELETE /rounds/{id}`.
@@ -303,7 +337,7 @@ Todas las respuestas de error traen `detail`:
 #### RF-28 Capturar estadísticas de un partido
 - **Endpoints:** `GET /matches/{id}/stats`, `PUT /matches/{id}/stats`, `DELETE /matches/{id}/stats/{player_id}`.
 - **Pantalla sugerida:** hoja de captura con dos tablas (local y visitante) que listan el roster de
-  cada equipo (`GET /teams/{id}/players`). Cada fila es un jugador y cada columna una estadística:
+  cada equipo (`GET /teams/{team_id}/players`). Cada fila es un jugador y cada columna una estadística:
 
 | Campo | Etiqueta | Tipo |
 |-------|----------|------|
@@ -316,7 +350,8 @@ Todas las respuestas de error traen `detail`:
 
 - El `PUT` recibe una **lista** `[{ player_id, attended, touchdowns, ... }]` y crea o reemplaza la fila de
   cada jugador enviado; los jugadores no enviados no se tocan. Se puede guardar todo de una vez.
-- Solo se aceptan jugadores de los dos equipos del partido (si no, `422`).
+- Solo se aceptan jugadores de los clubes de los dos equipos del partido (si no, `422`). El backend
+  guarda automáticamente con qué equipo (inscripción) jugó cada uno.
 - La "asistencia" del acumulado es el número de partidos con `attended = true`.
 
 ### 5.7 Finanzas (solo admin)
@@ -351,32 +386,35 @@ Reproduce la sección de finanzas del Excel: **Inscripción + Multas − Abonos 
 - **Endpoints:** `GET /users?role=coach`, `POST /users`, `GET/PATCH/DELETE /users/{id}`.
 - **Crear:** `email`, `password` (mínimo 8 caracteres), `full_name` y `role` (por defecto `coach`).
   El usuario queda confirmado y puede iniciar sesión de inmediato.
-- Después de crear un coach, asignarlo a su equipo desde RF-21 (`coach_user_id`).
+- Después de crear un coach, asignarlo a su club desde RF-21 (`coach_user_id`).
 - Un admin no puede cambiar su propio rol ni eliminarse a sí mismo (`422`).
 
 ---
 
 ## 6. Panel de coach
 
-#### RF-40 Mis equipos
-- **Endpoint:** `GET /me/teams` → equipos donde el coach está asignado.
-- Si tiene un solo equipo, entrar directo a su roster. Si no tiene ninguno, mostrar
-  "Aún no tienes equipo asignado; contacta al administrador".
+#### RF-40 Mis clubes
+- **Endpoint:** `GET /me/clubs` → clubes donde el coach está asignado.
+- Si tiene un solo club, entrar directo a su plantilla. Si no tiene ninguno, mostrar
+  "Aún no tienes club asignado; contacta al administrador".
 
-#### RF-41 Administrar jugadores de mi equipo
-- **Endpoints:** `GET /teams/{id}/players`, `POST /teams/{id}/players`, `PATCH /players/{id}`, `DELETE /players/{id}`.
+#### RF-41 Administrar jugadores de mi club
+- **Endpoints:** `GET /clubs/{id}/players`, `POST /clubs/{id}/players`, `PATCH /players/{id}`, `DELETE /players/{id}`.
+- La plantilla es del club: sirve para todos los torneos en los que el club participe.
 - **Formulario del jugador:**
 
 | Campo | Obligatorio | Notas |
 |-------|:-----------:|-------|
 | `full_name` | Sí | Nombre del jugador |
-| `jersey_number` | No | 0 a 999; no puede repetirse entre jugadores activos del equipo (`409`) |
+| `jersey_number` | No | 0 a 999; no puede repetirse entre jugadores activos del club (`409`) |
 
 - **Dar de baja vs. eliminar:**
   - *Dar de baja* (`PATCH` con `is_active: false`): el jugador deja de aparecer en el roster público pero
     **conserva sus estadísticas** y libera su número. Es la opción recomendada.
   - *Eliminar* (`DELETE`): borra al jugador **y todas sus estadísticas**. Pedir confirmación.
-- El coach recibe `403` si intenta modificar jugadores de un equipo que no es suyo.
+- El coach recibe `403` si intenta modificar jugadores de un club que no es suyo.
+- **Transferencias:** solo el admin puede mover un jugador a otro club (`PATCH /players/{id}` con
+  `club_id`). Sus estadísticas anteriores se quedan con el equipo con el que las hizo.
 - El coach solo lee (no edita) resultados, tabla y estadísticas; puede usar las mismas vistas del sitio público.
 
 ---
@@ -388,10 +426,12 @@ Reproduce la sección de finanzas del Excel: **Inscripción + Multas − Abonos 
 3. **Puntos en la tabla:** victoria = `points_win` (2), derrota = `points_loss` (0), más los ajustes manuales.
 4. Solo cuentan los partidos `finished` y `forfeit`.
 5. **Rol de juegos:** todos contra todos; con equipos impares descansa uno por jornada.
-6. Un equipo pertenece a un torneo; su nombre es único dentro de ese torneo.
-7. El número de jersey es único entre los jugadores **activos** de un equipo.
-8. Un coach solo administra los jugadores de los equipos donde es `coach_user_id`.
+6. **Clubes permanentes:** el nombre del club es único en la liga; un club se inscribe una sola vez por torneo.
+7. Los jugadores pertenecen al club y se conservan entre torneos. El número de jersey es único entre
+   los jugadores **activos** de un club.
+8. Un coach solo administra los jugadores de los clubes donde es `coach_user_id`.
 9. Finanzas: adeudo = inscripción + multas + otros cargos − abonos. Solo el admin lo ve.
+10. **Desempate en la tabla:** puntos → puntos a favor → diferencia → menos puntos en contra.
 
 ---
 
@@ -402,15 +442,18 @@ Público
 ├── /                              Torneos activos
 ├── /torneos/:id                   Tabla | Rol de juegos | Resultados | Equipos | Estadísticas
 ├── /torneos/:id/partidos/:mid     Detalle de partido
-├── /equipos/:id                   Perfil de equipo
-├── /jugadores/:id                 Perfil de jugador
+├── /torneos/:id/equipos/:teamId   Equipo en el torneo
+├── /clubes                        Clubes de la liga
+├── /clubes/:id                    Perfil e historial del club
+├── /jugadores/:id                 Perfil y carrera del jugador
 └── /login
 
 Admin (/admin)
+├── /admin/clubes                         CRUD + logo + asignar coach
+├── /admin/clubes/:id/jugadores           CRUD de plantilla (+ transferencias)
 ├── /admin/torneos                        Lista + crear
 ├── /admin/torneos/:id                    Resumen del torneo
-│   ├── equipos                           CRUD + logo + asignar coach
-│   ├── equipos/:teamId/jugadores         CRUD de roster
+│   ├── equipos                           Inscribir / dar de baja clubes
 │   ├── rol-de-juegos                     Generar rol + CRUD de jornadas
 │   ├── partidos                          CRUD + capturar resultado
 │   ├── partidos/:mid/estadisticas        Hoja de captura
@@ -419,8 +462,8 @@ Admin (/admin)
 └── /admin/usuarios                       Coaches y admins
 
 Coach (/coach)
-├── /coach                         Mis equipos
-└── /coach/equipos/:id             Roster (CRUD de jugadores)
+├── /coach                         Mis clubes
+└── /coach/clubes/:id              Plantilla (CRUD de jugadores)
 ```
 
 ---
@@ -429,6 +472,4 @@ Coach (/coach)
 
 | # | Tema | Impacto en el frontend |
 |---|------|------------------------|
-| 1 | **Desempate por enfrentamiento directo:** decidir si, al empatar en puntos, se ordena primero por quién ganó el partido entre esos equipos | Solo cambia el orden de la tabla y el texto del pie; no cambia pantallas |
-| 2 | **Equipos permanentes entre temporadas ("club" vs. "inscripción al torneo")** | Si se aprueba: nuevas pantallas "Clubes" e "Inscribir club a torneo", roster por temporada e historial del equipo y del jugador. Conviene decidirlo antes de construir las pantallas de equipos |
-| 3 | **Multas automáticas** (ej. cargar $700 al perder por forfeit o $200 por cambio de fecha) | Hoy el admin las registra a mano (RF-31) |
+| 1 | **Multas automáticas** (ej. cargar $700 al perder por forfeit o $200 por cambio de fecha) | Hoy el admin las registra a mano (RF-31) |

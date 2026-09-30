@@ -1,6 +1,7 @@
 from supabase import Client
 
 from app.domain.entities import (
+    Club,
     FinanceMovement,
     Match,
     Player,
@@ -19,7 +20,8 @@ def build_supabase_repositories(client: Client) -> Repositories:
     return Repositories(
         profiles=SupabaseRepository(client, "profiles", Profile),
         tournaments=SupabaseRepository(client, "tournaments", Tournament),
-        teams=SupabaseRepository(client, "teams", Team),
+        clubs=SupabaseRepository(client, "clubs", Club),
+        teams=SupabaseRepository(client, "teams", Team, read_table="team_details"),
         players=SupabaseRepository(client, "players", Player),
         rounds=SupabaseRepository(client, "rounds", Round),
         matches=SupabaseRepository(client, "matches", Match),

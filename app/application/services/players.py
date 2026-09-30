@@ -2,30 +2,33 @@ from uuid import UUID
 
 from app.application.actor import Actor
 from app.application.dto import PlayerCreate, PlayerUpdate
-from app.application.services.teams import TeamService
+from app.application.services.clubs import ClubService
 from app.core.exceptions import ConflictError, NotFoundError, PermissionDeniedError
-from app.domain.entities import Player, Team
+from app.domain.entities import Club, Player
 from app.domain.repositories import Repositories
 
 
 class PlayerService:
-    """El admin gestiona cualquier equipo; un coach solo los equipos que tiene asignados."""
+    """Los jugadores pertenecen al club y se conservan entre torneos.
 
-    def __init__(self, repos: Repositories, teams: TeamService) -> None:
+    El admin gestiona cualquier club; un coach solo los clubes que tiene asignados.
+    """
+
+    def __init__(self, repos: Repositories, clubs: ClubService) -> None:
         self.repos = repos
-        self.teams = teams
+        self.clubs = clubs
 
-    def list_by_team(self, team_id: UUID, include_inactive: bool = True) -> list[Player]:
-        self.teams.get(team_id)
-        filters: dict = {"team_id": team_id}
+    def list_by_club(self, club_id: UUID, include_inactive: bool = True) -> list[Player]:
+        self.clubs.get(club_id)
+        filters: dict = {"club_id": club_id}
         if not include_inactive:
             filters["is_active"] = True
         return self.repos.players.list(filters=filters, order_by=["jersey_number", "full_name"])
 
-    def list_visible(self, actor: Actor | None, team_id: UUID) -> list[Player]:
-        """El publico ve solo jugadores activos; admin y coach del equipo ven tambien las bajas."""
-        team = self.teams.get(team_id)
-        return self.list_by_team(team_id, include_inactive=self.can_manage_team(actor, team))
+    def list_visible(self, actor: Actor | None, club_id: UUID) -> list[Player]:
+        """El publico ve solo jugadores activos; admin y coach del club ven tambien las bajas."""
+        club = self.clubs.get(club_id)
+        return self.list_by_club(club_id, include_inactive=self.can_manage_club(actor, club))
 
     def get(self, player_id: UUID) -> Player:
         player = self.repos.players.get(player_id)
@@ -34,41 +37,48 @@ class PlayerService:
         return player
 
     @staticmethod
-    def can_manage_team(actor: Actor | None, team: Team) -> bool:
+    def can_manage_club(actor: Actor | None, club: Club) -> bool:
         if actor is None:
             return False
-        return actor.is_admin or team.coach_user_id == actor.id
+        return actor.is_admin or club.coach_user_id == actor.id
 
-    def create(self, actor: Actor, team_id: UUID, data: PlayerCreate) -> Player:
-        team = self.teams.get(team_id)
-        self._ensure_can_manage(actor, team)
+    def create(self, actor: Actor, club_id: UUID, data: PlayerCreate) -> Player:
+        club = self.clubs.get(club_id)
+        self._ensure_can_manage(actor, club)
         if data.is_active:
-            self._ensure_jersey_free(team_id, data.jersey_number)
-        return self.repos.players.create({**data.model_dump(), "team_id": team_id})
+            self._ensure_jersey_free(club_id, data.jersey_number)
+        return self.repos.players.create({**data.model_dump(), "club_id": club_id})
 
     def update(self, actor: Actor, player_id: UUID, data: PlayerUpdate) -> Player:
         player = self.get(player_id)
-        self._ensure_can_manage(actor, self.teams.get(player.team_id))
+        self._ensure_can_manage(actor, self.clubs.get(player.club_id))
         changes = data.changes()
-        jersey = changes.get("jersey_number", player.jersey_number)
+
+        target_club = changes.get("club_id", player.club_id)
+        if target_club != player.club_id:
+            if not actor.is_admin:
+                raise PermissionDeniedError("Solo el administrador puede transferir jugadores entre clubes")
+            self.clubs.get(target_club)
+
         if changes.get("is_active", player.is_active):
-            self._ensure_jersey_free(player.team_id, jersey, exclude_id=player_id)
+            jersey = changes.get("jersey_number", player.jersey_number)
+            self._ensure_jersey_free(target_club, jersey, exclude_id=player_id)
         if not changes:
             return player
         return self.repos.players.update(player_id, changes) or player
 
     def delete(self, actor: Actor, player_id: UUID) -> None:
         player = self.get(player_id)
-        self._ensure_can_manage(actor, self.teams.get(player.team_id))
+        self._ensure_can_manage(actor, self.clubs.get(player.club_id))
         self.repos.players.delete(player_id)
 
-    def _ensure_can_manage(self, actor: Actor, team: Team) -> None:
-        if not self.can_manage_team(actor, team):
-            raise PermissionDeniedError("Solo puedes administrar jugadores de tu propio equipo")
+    def _ensure_can_manage(self, actor: Actor, club: Club) -> None:
+        if not self.can_manage_club(actor, club):
+            raise PermissionDeniedError("Solo puedes administrar jugadores de tu propio club")
 
-    def _ensure_jersey_free(self, team_id: UUID, jersey: int | None, exclude_id: UUID | None = None) -> None:
+    def _ensure_jersey_free(self, club_id: UUID, jersey: int | None, exclude_id: UUID | None = None) -> None:
         if jersey is None:
             return
-        taken = self.repos.players.list(filters={"team_id": team_id, "jersey_number": jersey, "is_active": True})
+        taken = self.repos.players.list(filters={"club_id": club_id, "jersey_number": jersey, "is_active": True})
         if any(p.id != exclude_id for p in taken):
-            raise ConflictError(f"El numero {jersey} ya lo usa otro jugador activo del equipo")
+            raise ConflictError(f"El numero {jersey} ya lo usa otro jugador activo del club")

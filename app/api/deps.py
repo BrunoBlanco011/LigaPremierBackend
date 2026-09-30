@@ -14,6 +14,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.application.actor import Actor
 from app.application.services.finance import FinanceService
 from app.application.services.matches import MatchService
+from app.application.services.clubs import ClubService
 from app.application.services.players import PlayerService
 from app.application.services.rounds import RoundService
 from app.application.services.schedule import ScheduleService
@@ -64,12 +65,16 @@ def get_tournament_service(repos: Repos) -> TournamentService:
     return TournamentService(repos)
 
 
-def get_team_service(repos: Repos, storage: Annotated[FileStorage, Depends(get_file_storage)]) -> TeamService:
-    return TeamService(repos, storage, get_settings().max_logo_size_mb * 1024 * 1024)
+def get_club_service(repos: Repos, storage: Annotated[FileStorage, Depends(get_file_storage)]) -> ClubService:
+    return ClubService(repos, storage, get_settings().max_logo_size_mb * 1024 * 1024)
 
 
-def get_player_service(repos: Repos, teams: Annotated[TeamService, Depends(get_team_service)]) -> PlayerService:
-    return PlayerService(repos, teams)
+def get_team_service(repos: Repos) -> TeamService:
+    return TeamService(repos)
+
+
+def get_player_service(repos: Repos, clubs: Annotated[ClubService, Depends(get_club_service)]) -> PlayerService:
+    return PlayerService(repos, clubs)
 
 
 def get_round_service(repos: Repos) -> RoundService:
@@ -142,6 +147,7 @@ AdminActor = Annotated[Actor, Depends(require_admin)]
 CoachActor = Annotated[Actor, Depends(require_coach)]
 
 Tournaments = Annotated[TournamentService, Depends(get_tournament_service)]
+Clubs = Annotated[ClubService, Depends(get_club_service)]
 Teams = Annotated[TeamService, Depends(get_team_service)]
 Players = Annotated[PlayerService, Depends(get_player_service)]
 Rounds = Annotated[RoundService, Depends(get_round_service)]

@@ -25,69 +25,112 @@ def test_tournament_crud():
     assert env.client.get(f"{API}/tournaments/{t['id']}").status_code == 404
 
 
-# ------------------------------------------------------------ equipos
-def test_team_unique_name_and_coach_assignment():
+# ------------------------------------------------------------ clubes e inscripciones
+def test_club_crud_unique_name_and_coach_assignment():
     env = Env()
-    t = env.tournament()
-    env.team(t["id"], "TOROS", coach_name="Rafa")
-    r = env.client.post(f"{API}/tournaments/{t['id']}/teams", json={"name": "toros"}, headers=env.as_admin)
-    assert r.status_code == 409
+    env.club("TOROS", coach_name="Rafa")
+    assert env.client.post(f"{API}/clubs", json={"name": "toros"}, headers=env.as_admin).status_code == 409
+    assert env.client.post(f"{API}/clubs", json={"name": "X"}, headers=env.as_coach).status_code == 403
 
-    r = env.client.post(f"{API}/tournaments/{t['id']}/teams",
-                        json={"name": "LOBOS", "coach_user_id": str(env.admin.id)}, headers=env.as_admin)
+    r = env.client.post(f"{API}/clubs", json={"name": "LOBOS", "coach_user_id": str(env.admin.id)},
+                        headers=env.as_admin)
     assert r.status_code == 422  # el usuario asignado debe ser coach
 
-    lobos = env.team(t["id"], "LOBOS", coach_user_id=str(env.coach.id))
-    mine = env.client.get(f"{API}/me/teams", headers=env.as_coach).json()
+    lobos = env.club("LOBOS", coach_user_id=str(env.coach.id))
+    mine = env.client.get(f"{API}/me/clubs", headers=env.as_coach).json()
     assert [x["id"] for x in mine] == [lobos["id"]]
 
+    r = env.client.patch(f"{API}/clubs/{lobos['id']}", json={"name": "LOBOS PLATEADOS"}, headers=env.as_admin)
+    assert r.status_code == 200 and r.json()["name"] == "LOBOS PLATEADOS"
+    assert env.client.delete(f"{API}/clubs/{lobos['id']}", headers=env.as_admin).status_code == 204
 
-def test_logo_upload():
+
+def test_register_clubs_to_tournaments():
     env = Env()
-    t = env.tournament()
-    team = env.team(t["id"], "TOROS")
-    files = {"file": ("logo.png", b"\x89PNG fake", "image/png")}
-    r = env.client.post(f"{API}/teams/{team['id']}/logo", files=files, headers=env.as_admin)
-    assert r.status_code == 200, r.text
-    assert r.json()["logo_url"].startswith("https://cdn.test/")
+    t1, t2 = env.tournament(name="Apertura"), env.tournament(name="Clausura")
+    toros, lobos = env.club("TOROS"), env.club("LOBOS")
+    url = f"{API}/tournaments/{t1['id']}/teams"
+
+    r = env.client.post(url, json={"club_ids": [toros["id"], lobos["id"]]}, headers=env.as_admin)
+    assert r.status_code == 201, r.text
+    teams = r.json()
+    assert {t["name"] for t in teams} == {"TOROS", "LOBOS"}  # nombre tomado del club
+    assert env.client.post(url, json={"club_ids": [toros["id"]]}, headers=env.as_admin).status_code == 409
+
+    # El mismo club juega otro torneo: nueva inscripcion, mismo club
+    t2_team = env.client.post(f"{API}/tournaments/{t2['id']}/teams", json={"club_ids": [toros["id"]]},
+                              headers=env.as_admin).json()[0]
+    assert t2_team["club_id"] == toros["id"] and t2_team["id"] != teams[0]["id"]
+
+    # Un club con torneos jugados no se puede borrar (se conserva el historial)
+    assert env.client.delete(f"{API}/clubs/{toros['id']}", headers=env.as_admin).status_code == 409
+
+    # Cambiar el logo del club se refleja en todas sus inscripciones
+    files = {"file": ("logo.png", b"PNG fake", "image/png")}
+    r = env.client.post(f"{API}/clubs/{toros['id']}/logo", files=files, headers=env.as_admin)
+    assert r.status_code == 200 and r.json()["logo_url"].startswith("https://cdn.test/")
+    assert env.client.get(f"{API}/teams/{t2_team['id']}").json()["logo_url"] == r.json()["logo_url"]
     bad = {"file": ("logo.gif", b"GIF", "image/gif")}
-    assert env.client.post(f"{API}/teams/{team['id']}/logo", files=bad, headers=env.as_admin).status_code == 422
+    assert env.client.post(f"{API}/clubs/{toros['id']}/logo", files=bad, headers=env.as_admin).status_code == 422
+
+    # Baja de inscripcion
+    assert env.client.delete(f"{API}/teams/{t2_team['id']}", headers=env.as_admin).status_code == 204
+
+
+def test_club_history():
+    env = Env()
+    t1 = env.tournament(name="Apertura", start_date="2026-01-10")
+    t2 = env.tournament(name="Clausura", start_date="2026-06-10")
+    for t in (t1, t2):
+        toros, lobos = env.team(t["id"], "TOROS"), env.team(t["id"], "LOBOS")
+        m = env.match(t["id"], toros["id"], lobos["id"])
+        score = {"home_score": 30, "away_score": 12} if t is t1 else {"home_score": 6, "away_score": 21}
+        env.client.put(f"{API}/matches/{m['id']}/result", json=score, headers=env.as_admin)
+
+    history = env.client.get(f"{API}/clubs/{toros['club_id']}/history").json()
+    assert [h["tournament"]["name"] for h in history] == ["Clausura", "Apertura"]
+    assert [h["standing"]["position"] for h in history] == [2, 1]
+    assert history[0]["teams_count"] == 2
 
 
 # ------------------------------------------------------------ jugadores / coach
-def test_coach_manages_only_own_team_players():
+def test_coach_manages_only_own_club_players():
     env = Env()
-    t = env.tournament()
-    mine = env.team(t["id"], "LOBOS", coach_user_id=str(env.coach.id))
-    other = env.team(t["id"], "TOROS")
+    mine = env.club("LOBOS", coach_user_id=str(env.coach.id))
+    other = env.club("TOROS")
 
-    r = env.client.post(f"{API}/teams/{mine['id']}/players",
-                        json={"full_name": "Marcos Rincon", "jersey_number": 17},
+    r = env.client.post(f"{API}/clubs/{mine['id']}/players", json={"full_name": "Marcos Rincon", "jersey_number": 17},
                         headers=env.as_coach)
     assert r.status_code == 201, r.text
     player = r.json()
 
-    dup = env.client.post(f"{API}/teams/{mine['id']}/players", json={"full_name": "Otro", "jersey_number": 17},
+    dup = env.client.post(f"{API}/clubs/{mine['id']}/players", json={"full_name": "Otro", "jersey_number": 17},
                           headers=env.as_coach)
     assert dup.status_code == 409
 
-    forbidden = env.client.post(f"{API}/teams/{other['id']}/players", json={"full_name": "X"}, headers=env.as_coach)
+    forbidden = env.client.post(f"{API}/clubs/{other['id']}/players", json={"full_name": "X"}, headers=env.as_coach)
     assert forbidden.status_code == 403
 
     r = env.client.patch(f"{API}/players/{player['id']}", json={"jersey_number": 7}, headers=env.as_coach)
     assert r.status_code == 200 and r.json()["jersey_number"] == 7
 
-    # Una baja deja de verse en el roster publico, pero el coach la sigue viendo
+    # El coach no puede transferir jugadores; el admin si
+    move = {"club_id": other["id"]}
+    assert env.client.patch(f"{API}/players/{player['id']}", json=move, headers=env.as_coach).status_code == 403
+
+    # Una baja deja de verse en la plantilla publica, pero el coach la sigue viendo
     env.client.patch(f"{API}/players/{player['id']}", json={"is_active": False}, headers=env.as_coach)
-    assert env.client.get(f"{API}/teams/{mine['id']}/players").json() == []
-    assert len(env.client.get(f"{API}/teams/{mine['id']}/players", headers=env.as_coach).json()) == 1
+    assert env.client.get(f"{API}/clubs/{mine['id']}/players").json() == []
+    assert len(env.client.get(f"{API}/clubs/{mine['id']}/players", headers=env.as_coach).json()) == 1
 
     # Solo nombre y numero: otros campos se rechazan
-    extra = env.client.post(f"{API}/teams/{mine['id']}/players", json={"full_name": "X", "birth_date": "2000-01-01"},
+    extra = env.client.post(f"{API}/clubs/{mine['id']}/players", json={"full_name": "X", "birth_date": "2000-01-01"},
                             headers=env.as_coach)
     assert extra.status_code == 422
 
-    assert env.client.delete(f"{API}/players/{player['id']}", headers=env.as_coach).status_code == 204
+    r = env.client.patch(f"{API}/players/{player['id']}", json=move, headers=env.as_admin)
+    assert r.status_code == 200 and r.json()["club_id"] == other["id"]
+    assert env.client.delete(f"{API}/players/{player['id']}", headers=env.as_admin).status_code == 204
 
 
 # ------------------------------------------------------------ jornadas y partidos
@@ -172,7 +215,7 @@ def test_player_stats_capture_and_leaders():
     outsider_team = env.team(t["id"], "SNAKES")
 
     def player(team, name, n):
-        r = env.client.post(f"{API}/teams/{team['id']}/players", json={"full_name": name, "jersey_number": n},
+        r = env.client.post(f"{API}/clubs/{team['club_id']}/players", json={"full_name": name, "jersey_number": n},
                             headers=env.as_admin)
         return r.json()
 
@@ -206,6 +249,8 @@ def test_player_stats_capture_and_leaders():
 
     detail = env.client.get(f"{API}/players/{rafa['id']}/stats").json()
     assert detail["totals"]["touchdowns"] == 6 and len(detail["matches"]) == 2
+    assert [s["tournament_name"] for s in detail["by_tournament"]] == ["Apertura 2026"]
+    assert detail["by_tournament"][0]["totals"]["touchdowns"] == 6
 
     assert env.client.delete(f"{API}/matches/{m1['id']}/stats/{rafa['id']}", headers=env.as_admin).status_code == 204
 

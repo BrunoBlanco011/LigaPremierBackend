@@ -7,7 +7,9 @@ from app.domain.standings import compute_standings
 
 def _setup():
     tournament = Tournament(id=uuid4(), name="Apertura")  # 2 / 1 / 0 puntos
-    toros, lobos, snakes = (Team(id=uuid4(), tournament_id=tournament.id, name=n) for n in ("TOROS", "LOBOS", "SNAKES"))
+    toros, lobos, snakes = (
+        Team(id=uuid4(), tournament_id=tournament.id, club_id=uuid4(), name=n) for n in ("TOROS", "LOBOS", "SNAKES")
+    )
     return tournament, toros, lobos, snakes
 
 
@@ -63,12 +65,20 @@ def test_adjustments_add_or_subtract_points():
     assert [r.team_name for r in table] == ["LOBOS", "TOROS"]
 
 
-def test_tiebreak_by_point_difference_then_points_for():
+def test_tiebreak_by_points_for_before_difference():
     t, toros, lobos, snakes = _setup()
     matches = [_match(toros, snakes, 40, 10), _match(lobos, snakes, 20, 10), _match(snakes, toros, 30, 0)]
     table = compute_standings(t, [toros, lobos, snakes], matches)
-    # Toros y Snakes: 2 pts; Toros dif 40-40=0 ... Snakes dif (10+10+30)-(40+20+0)=-10; Lobos 2 pts dif +10
-    assert [r.team_name for r in table] == ["LOBOS", "TOROS", "SNAKES"]
+    # Los tres con 2 pts. A favor: Snakes 50, Toros 40, Lobos 20 (aunque Lobos tenga la mejor diferencia, +10)
+    assert [r.team_name for r in table] == ["SNAKES", "TOROS", "LOBOS"]
+
+
+def test_tiebreak_same_points_for_uses_difference():
+    t, toros, lobos, snakes = _setup()
+    # Todos con 2 pts. Snakes 31 a favor; Toros y Lobos 30 a favor -> Toros dif +19, Lobos dif +10
+    matches = [_match(toros, snakes, 30, 10), _match(lobos, snakes, 30, 20), _match(snakes, toros, 1, 0)]
+    table = compute_standings(t, [toros, lobos, snakes], matches)
+    assert [r.team_name for r in table] == ["SNAKES", "TOROS", "LOBOS"]
 
 
 def test_custom_points_config():

@@ -59,19 +59,26 @@ class TournamentUpdate(Command):
     points_loss: int | None = Field(default=None, ge=0, le=10)
 
 
-# ---------------------------------------------------------------- Equipos
-class TeamCreate(Command):
+# ---------------------------------------------------------------- Clubes
+class ClubCreate(Command):
     name: ShortText
     coach_name: str | None = Field(default=None, max_length=120)
     coach_user_id: UUID | None = None
 
 
-class TeamUpdate(Command):
+class ClubUpdate(Command):
     NON_NULLABLE = frozenset({"name"})
 
     name: str | None = Field(default=None, min_length=1, max_length=120)
     coach_name: str | None = Field(default=None, max_length=120)
     coach_user_id: UUID | None = None
+
+
+# ---------------------------------------------------------------- Inscripciones
+class TeamRegister(Command):
+    """Inscribe uno o varios clubes a un torneo."""
+
+    club_ids: list[UUID] = Field(min_length=1, max_length=100)
 
 
 # ---------------------------------------------------------------- Jugadores
@@ -82,11 +89,12 @@ class PlayerCreate(Command):
 
 
 class PlayerUpdate(Command):
-    NON_NULLABLE = frozenset({"full_name", "is_active"})
+    NON_NULLABLE = frozenset({"full_name", "is_active", "club_id"})
 
     full_name: str | None = Field(default=None, min_length=1, max_length=120)
     jersey_number: int | None = Field(default=None, ge=0, le=999)
     is_active: bool | None = None
+    club_id: UUID | None = Field(default=None, description="Transferir a otro club (solo admin)")
 
 
 # ---------------------------------------------------------------- Jornadas

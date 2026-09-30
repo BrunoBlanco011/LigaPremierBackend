@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.domain.entities import Match, PlayerMatchStats
+from app.domain.entities import Match, PlayerMatchStats, Tournament
 
 
 class TeamSummary(BaseModel):
@@ -45,7 +45,7 @@ class PlayerTotalsView(BaseModel):
     player_id: UUID
     full_name: str
     jersey_number: int | None
-    team_id: UUID
+    team_id: UUID | None = None
     team_name: str
     games_attended: int
     touchdowns: int
@@ -55,9 +55,26 @@ class PlayerTotalsView(BaseModel):
     tackles: int
 
 
+class PlayerSeasonView(BaseModel):
+    tournament_id: UUID
+    tournament_name: str
+    totals: PlayerTotalsView
+
+
 class PlayerStatsDetail(BaseModel):
     totals: PlayerTotalsView
+    """Acumulado de toda la carrera (team_id nulo, team_name = club actual)."""
+    by_tournament: list[PlayerSeasonView]
     matches: list[PlayerMatchStats]
+
+
+class ClubSeason(BaseModel):
+    """Participacion de un club en un torneo."""
+
+    tournament: Tournament
+    team_id: UUID
+    standing: StandingView | None
+    teams_count: int
 
 
 class ScheduleResult(BaseModel):

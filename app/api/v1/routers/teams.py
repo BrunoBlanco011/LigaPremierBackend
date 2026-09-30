@@ -1,12 +1,12 @@
 from uuid import UUID
 
-from fastapi import APIRouter, File, Response, UploadFile, status
+from fastapi import APIRouter, Response, status
 
 from app.api.deps import AdminActor, CurrentActor, OptionalActor, Players, Teams
-from app.application.dto import PlayerCreate, PlayerUpdate, TeamUpdate
+from app.application.dto import PlayerUpdate
 from app.domain.entities import Player, Team
 
-router = APIRouter(tags=["Equipos"])
+router = APIRouter(tags=["Equipos (inscripciones)"])
 
 
 @router.get("/teams/{team_id}", response_model=Team)
@@ -14,37 +14,20 @@ def get_team(team_id: UUID, service: Teams):
     return service.get(team_id)
 
 
-@router.patch("/teams/{team_id}", response_model=Team)
-def update_team(team_id: UUID, data: TeamUpdate, _: AdminActor, service: Teams):
-    return service.update(team_id, data)
-
-
-@router.delete("/teams/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_team(team_id: UUID, _: AdminActor, service: Teams):
-    service.delete(team_id)
+@router.delete("/teams/{team_id}", status_code=status.HTTP_204_NO_CONTENT,
+               summary="Dar de baja al club del torneo (borra sus partidos, estadisticas y finanzas del torneo)")
+def unregister_team(team_id: UUID, _: AdminActor, service: Teams):
+    service.unregister(team_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/teams/{team_id}/logo", response_model=Team, summary="Subir/reemplazar el logo (png, jpg, webp, svg)")
-def upload_logo(team_id: UUID, _: AdminActor, service: Teams, file: UploadFile = File(...)):
-    # Endpoint sincrono: FastAPI lo corre en un threadpool y la subida a Storage no bloquea el event loop
-    content = file.file.read(service.max_logo_bytes + 1)
-    return service.upload_logo(team_id, content, file.content_type, file.filename)
+@router.get("/teams/{team_id}/players", response_model=list[Player], tags=["Jugadores"],
+            summary="Plantilla del club de esta inscripcion")
+def list_team_players(team_id: UUID, actor: OptionalActor, teams: Teams, players: Players):
+    return players.list_visible(actor, teams.get(team_id).club_id)
 
 
 # ------------------------------------------------------------ jugadores
-@router.get("/teams/{team_id}/players", response_model=list[Player], tags=["Jugadores"],
-            summary="Roster del equipo (las bajas solo las ven el admin y su coach)")
-def list_players(team_id: UUID, actor: OptionalActor, service: Players):
-    return service.list_visible(actor, team_id)
-
-
-@router.post("/teams/{team_id}/players", response_model=Player, status_code=status.HTTP_201_CREATED,
-             tags=["Jugadores"], summary="Agregar jugador (admin o coach del equipo)")
-def create_player(team_id: UUID, data: PlayerCreate, actor: CurrentActor, service: Players):
-    return service.create(actor, team_id, data)
-
-
 @router.get("/players/{player_id}", response_model=Player, tags=["Jugadores"])
 def get_player(player_id: UUID, service: Players):
     return service.get(player_id)

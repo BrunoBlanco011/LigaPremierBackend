@@ -11,7 +11,7 @@ from app.application.dto import (
     MatchCreate,
     RoundCreate,
     ScheduleGenerate,
-    TeamCreate,
+    TeamRegister,
     TournamentCreate,
     TournamentUpdate,
 )
@@ -52,14 +52,15 @@ def delete_tournament(tournament_id: UUID, _: AdminActor, service: Tournaments):
 
 
 # ------------------------------------------------------------ equipos
-@router.get("/{tournament_id}/teams", response_model=list[Team], tags=["Equipos"])
+@router.get("/{tournament_id}/teams", response_model=list[Team], tags=["Equipos (inscripciones)"])
 def list_teams(tournament_id: UUID, service: Teams):
     return service.list_by_tournament(tournament_id)
 
 
-@router.post("/{tournament_id}/teams", response_model=Team, status_code=status.HTTP_201_CREATED, tags=["Equipos"])
-def create_team(tournament_id: UUID, data: TeamCreate, _: AdminActor, service: Teams):
-    return service.create(tournament_id, data)
+@router.post("/{tournament_id}/teams", response_model=list[Team], status_code=status.HTTP_201_CREATED,
+             tags=["Equipos (inscripciones)"], summary="Inscribir uno o varios clubes al torneo")
+def register_teams(tournament_id: UUID, data: TeamRegister, _: AdminActor, service: Teams):
+    return service.register(tournament_id, data)
 
 
 # ------------------------------------------------------------ jornadas

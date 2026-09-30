@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from app.core.exceptions import AuthenticationError
 from app.domain.entities import (
+    Club,
     FinanceMovement,
     Match,
     Player,
@@ -40,11 +41,16 @@ class InMemoryRepository(Generic[T]):
         self.model = model
         self.rows: dict[UUID, T] = {}
 
+    def _view(self, entity: T) -> T:
+        """Gancho para simular vistas de lectura (ver TeamDetailsRepository)."""
+        return entity
+
     def get(self, entity_id: UUID) -> T | None:
-        return self.rows.get(UUID(str(entity_id)))
+        entity = self.rows.get(UUID(str(entity_id)))
+        return self._view(entity) if entity is not None else None
 
     def list(self, *, filters=None, in_filters=None, order_by: Sequence[str] = ()) -> list[T]:
-        result = list(self.rows.values())
+        result = [self._view(r) for r in self.rows.values()]
         for col, value in (filters or {}).items():
             result = [r for r in result if _norm(getattr(r, col)) == _norm(value)]
         for col, values in (in_filters or {}).items():
@@ -62,18 +68,18 @@ class InMemoryRepository(Generic[T]):
         now = datetime.now(timezone.utc)
         entity = self.model.model_validate({"id": uuid4(), "created_at": now, "updated_at": now, **data})
         self.rows[entity.id] = entity
-        return entity
+        return self._view(entity)
 
     def create_many(self, rows: Sequence[Mapping[str, Any]]) -> list[T]:
         return [self.create(r) for r in rows]
 
     def update(self, entity_id: UUID, data: Mapping[str, Any]) -> T | None:
-        current = self.get(entity_id)
+        current = self.rows.get(UUID(str(entity_id)))
         if current is None:
             return None
         updated = self.model.model_validate({**current.model_dump(), **data})
         self.rows[updated.id] = updated
-        return updated
+        return self._view(updated)
 
     def delete(self, entity_id: UUID) -> bool:
         return self.rows.pop(UUID(str(entity_id)), None) is not None
@@ -84,6 +90,23 @@ class InMemoryRepository(Generic[T]):
             existing = self.list(filters={c: row[c] for c in on_conflict})
             out.append(self.update(existing[0].id, row) if existing else self.create(row))
         return out
+
+
+class TeamDetailsRepository(InMemoryRepository[Team]):
+    """Simula la vista `team_details`: la inscripcion muestra nombre, logo y coach de su club."""
+
+    def __init__(self, clubs: InMemoryRepository[Club]) -> None:
+        super().__init__(Team)
+        self.clubs = clubs
+
+    def _view(self, entity: Team) -> Team:
+        club = self.clubs.get(entity.club_id)
+        if club is None:
+            return entity
+        return entity.model_copy(update={
+            "name": club.name, "logo_url": club.logo_url,
+            "coach_name": club.coach_name, "coach_user_id": club.coach_user_id,
+        })
 
 
 class FakeStorage:
@@ -120,10 +143,12 @@ class FakeAuth:
 
 
 def build_fake_repositories() -> Repositories:
+    clubs = InMemoryRepository(Club)
     return Repositories(
         profiles=InMemoryRepository(Profile),
         tournaments=InMemoryRepository(Tournament),
-        teams=InMemoryRepository(Team),
+        clubs=clubs,
+        teams=TeamDetailsRepository(clubs),
         players=InMemoryRepository(Player),
         rounds=InMemoryRepository(Round),
         matches=InMemoryRepository(Match),

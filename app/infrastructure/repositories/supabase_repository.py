@@ -42,20 +42,34 @@ def _json(data: Any) -> Any:
 
 
 class SupabaseRepository(Generic[T]):
-    def __init__(self, client: Client, table: str, model: type[T]) -> None:
+    """`read_table` permite leer de una vista (p. ej. `team_details`) y escribir en la tabla base."""
+
+    def __init__(self, client: Client, table: str, model: type[T], read_table: str | None = None) -> None:
         self.client = client
         self.table = table
         self.model = model
+        self.read_table = read_table
 
     def _query(self):
         return self.client.table(self.table)
 
+    def _read_query(self):
+        return self.client.table(self.read_table or self.table)
+
     def _parse(self, rows: list[dict[str, Any]]) -> list[T]:
         return [self.model.model_validate(row) for row in rows]
 
+    def _reread(self, rows: list[dict[str, Any]]) -> list[T]:
+        """Tras escribir, relee desde la vista para devolver los campos derivados."""
+        if not self.read_table:
+            return self._parse(rows)
+        ids = [row["id"] for row in rows]
+        by_id = {str(e.id): e for e in self.list(in_filters={"id": ids})}
+        return [by_id[i] for i in ids if i in by_id]
+
     def get(self, entity_id: UUID) -> T | None:
         with translate_errors():
-            response = self._query().select("*").eq("id", str(entity_id)).limit(1).execute()
+            response = self._read_query().select("*").eq("id", str(entity_id)).limit(1).execute()
         rows = self._parse(response.data)
         return rows[0] if rows else None
 
@@ -66,7 +80,7 @@ class SupabaseRepository(Generic[T]):
         in_filters: Mapping[str, Sequence[Any]] | None = None,
         order_by: Sequence[str] = (),
     ) -> list[T]:
-        query = self._query().select("*")
+        query = self._read_query().select("*")
         for column, value in (filters or {}).items():
             query = query.is_(column, "null") if value is None else query.eq(column, _json(value))
         for column, values in (in_filters or {}).items():
@@ -83,19 +97,19 @@ class SupabaseRepository(Generic[T]):
     def create(self, data: Mapping[str, Any]) -> T:
         with translate_errors():
             response = self._query().insert(_json(dict(data))).execute()
-        return self._parse(response.data)[0]
+        return self._reread(response.data)[0]
 
     def create_many(self, rows: Sequence[Mapping[str, Any]]) -> list[T]:
         if not rows:
             return []
         with translate_errors():
             response = self._query().insert(_json([dict(r) for r in rows])).execute()
-        return self._parse(response.data)
+        return self._reread(response.data)
 
     def update(self, entity_id: UUID, data: Mapping[str, Any]) -> T | None:
         with translate_errors():
             response = self._query().update(_json(dict(data))).eq("id", str(entity_id)).execute()
-        rows = self._parse(response.data)
+        rows = self._reread(response.data)
         return rows[0] if rows else None
 
     def delete(self, entity_id: UUID) -> bool:
@@ -108,4 +122,4 @@ class SupabaseRepository(Generic[T]):
             return []
         with translate_errors():
             response = self._query().upsert(_json([dict(r) for r in rows]), on_conflict=",".join(on_conflict)).execute()
-        return self._parse(response.data)
+        return self._reread(response.data)

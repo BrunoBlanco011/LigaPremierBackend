@@ -12,6 +12,7 @@ from typing import Any, Generic, Protocol, TypeVar
 from uuid import UUID
 
 from app.domain.entities import (
+    Club,
     FinanceMovement,
     Match,
     Player,
@@ -86,6 +87,7 @@ class Repositories:
 
     profiles: Repository[Profile]
     tournaments: Repository[Tournament]
+    clubs: Repository[Club]
     teams: Repository[Team]
     players: Repository[Player]
     rounds: Repository[Round]
