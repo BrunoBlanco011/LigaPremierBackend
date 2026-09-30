@@ -12,6 +12,7 @@ from typing import Any, Generic, Protocol, TypeVar
 from uuid import UUID
 
 from app.domain.entities import (
+    FinanceMovement,
     Match,
     Player,
     PlayerMatchStats,
@@ -39,6 +40,8 @@ class Repository(Protocol, Generic[T]):
         ...
 
     def create(self, data: Mapping[str, Any]) -> T: ...
+
+    def create_many(self, rows: Sequence[Mapping[str, Any]]) -> list[T]: ...
 
     def update(self, entity_id: UUID, data: Mapping[str, Any]) -> T | None: ...
 
@@ -89,3 +92,4 @@ class Repositories:
     matches: Repository[Match]
     adjustments: Repository[StandingAdjustment]
     player_stats: Repository[PlayerMatchStats]
+    finance: Repository[FinanceMovement]

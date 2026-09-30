@@ -2,11 +2,12 @@
 
 Reglas (basadas en el ROL DE JUEGOS de la liga):
 - Solo cuentan partidos `finished` y `forfeit`. Los cancelados/pendientes no.
-- JJ = juegos jugados, JG = ganados, JE = empatados, JP = perdidos.
+- En tocho no hay empates: se juega tiempo extra, por lo que todo partido
+  finalizado tiene un ganador (la base de datos y los servicios lo validan).
+- JJ = juegos jugados, JG = ganados, JP = perdidos.
 - A favor / En contra = puntos anotados / recibidos; Diferencia = AF - EC.
-- Puntos = JG*points_win + JE*points_draw + JP*points_loss + ajustes manuales.
-- En un forfeit pierde `forfeit_loser_team_id` sin importar el marcador
-  capturado (normalmente el admin registra algo como 21-0).
+- Puntos = JG*points_win + JP*points_loss + ajustes manuales.
+- En un forfeit pierde `forfeit_loser_team_id` con marcador fijo 21-0.
 - Desempate: puntos, diferencia, puntos a favor, menos puntos en contra, nombre.
 """
 
@@ -26,7 +27,6 @@ class StandingRow:
     position: int = 0
     played: int = 0
     won: int = 0
-    drawn: int = 0
     lost: int = 0
     points_for: int = 0
     points_against: int = 0
@@ -40,7 +40,7 @@ class StandingRow:
 
 
 def winner_team_id(match: Match) -> UUID | None:
-    """Ganador de un partido que cuenta para la tabla; None si es empate o no se ha jugado."""
+    """Ganador de un partido que cuenta para la tabla; None si no se ha jugado."""
     if not match.status.counts_for_standings:
         return None
     if match.status == MatchStatus.FORFEIT and match.forfeit_loser_team_id:
@@ -60,7 +60,8 @@ def compute_standings(
     rows = {t.id: StandingRow(team_id=t.id, team_name=t.name, logo_url=t.logo_url) for t in teams}
 
     for match in matches:
-        if not match.status.counts_for_standings:
+        winner = winner_team_id(match)
+        if winner is None:
             continue
         home, away = rows.get(match.home_team_id), rows.get(match.away_team_id)
         if home is None or away is None:
@@ -74,16 +75,9 @@ def compute_standings(
         away.points_for += away_score
         away.points_against += home_score
 
-        winner = winner_team_id(match)
-        if winner == match.home_team_id:
-            home.won += 1
-            away.lost += 1
-        elif winner == match.away_team_id:
-            away.won += 1
-            home.lost += 1
-        else:
-            home.drawn += 1
-            away.drawn += 1
+        winner_row, loser_row = (home, away) if winner == match.home_team_id else (away, home)
+        winner_row.won += 1
+        loser_row.lost += 1
 
     for adj in adjustments:
         row = rows.get(adj.team_id)
@@ -92,12 +86,7 @@ def compute_standings(
             row.adjustment_reasons.append(adj.reason)
 
     for row in rows.values():
-        row.points = (
-            row.won * tournament.points_win
-            + row.drawn * tournament.points_draw
-            + row.lost * tournament.points_loss
-            + row.adjustment_points
-        )
+        row.points = row.won * tournament.points_win + row.lost * tournament.points_loss + row.adjustment_points
 
     ordered = sorted(
         rows.values(),

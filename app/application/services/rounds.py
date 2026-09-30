@@ -27,6 +27,7 @@ class RoundService:
         self.tournaments.get(tournament_id)
         self._validate_dates(data.start_date, data.end_date)
         self._ensure_number_free(tournament_id, data.number)
+        self._ensure_team_in_tournament(tournament_id, data.bye_team_id)
         payload = data.model_dump()
         payload["name"] = payload["name"] or f"Jornada {data.number}"
         return self.repos.rounds.create({**payload, "tournament_id": tournament_id})
@@ -37,6 +38,7 @@ class RoundService:
         self._validate_dates(changes.get("start_date", round_.start_date), changes.get("end_date", round_.end_date))
         if "number" in changes and changes["number"] != round_.number:
             self._ensure_number_free(round_.tournament_id, changes["number"])
+        self._ensure_team_in_tournament(round_.tournament_id, changes.get("bye_team_id"))
         if not changes:
             return round_
         return self.repos.rounds.update(round_id, changes) or round_
@@ -49,6 +51,13 @@ class RoundService:
     def _ensure_number_free(self, tournament_id: UUID, number: int) -> None:
         if self.repos.rounds.list(filters={"tournament_id": tournament_id, "number": number}):
             raise ConflictError(f"Ya existe la jornada {number} en este torneo")
+
+    def _ensure_team_in_tournament(self, tournament_id: UUID, team_id: UUID | None) -> None:
+        if team_id is None:
+            return
+        team = self.repos.teams.get(team_id)
+        if team is None or team.tournament_id != tournament_id:
+            raise ValidationError("El equipo que descansa debe pertenecer al torneo")
 
     @staticmethod
     def _validate_dates(start: date | None, end: date | None) -> None:

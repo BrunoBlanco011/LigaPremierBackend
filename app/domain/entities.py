@@ -1,11 +1,12 @@
 """Entidades del dominio. No dependen de FastAPI ni de Supabase."""
 
 from datetime import date, datetime
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from app.domain.enums import MatchStatus, TournamentStatus, UserRole
+from app.domain.enums import FinanceMovementType, MatchStatus, TournamentStatus, UserRole
 
 
 class Entity(BaseModel):
@@ -31,7 +32,6 @@ class Tournament(Entity):
     end_date: date | None = None
     status: TournamentStatus = TournamentStatus.DRAFT
     points_win: int = 2
-    points_draw: int = 1
     points_loss: int = 0
 
 
@@ -48,8 +48,6 @@ class Player(Entity):
     team_id: UUID
     full_name: str
     jersey_number: int | None = None
-    position: str | None = None
-    birth_date: date | None = None
     is_active: bool = True
 
 
@@ -59,6 +57,7 @@ class Round(Entity):
     name: str | None = None
     start_date: date | None = None
     end_date: date | None = None
+    bye_team_id: UUID | None = None
 
 
 class Match(Entity):
@@ -91,3 +90,13 @@ class PlayerMatchStats(Entity):
     interceptions: int = 0
     sacks: int = 0
     tackles: int = 0
+
+
+class FinanceMovement(Entity):
+    tournament_id: UUID
+    team_id: UUID
+    type: FinanceMovementType
+    amount: Decimal
+    description: str | None = None
+    occurred_on: date | None = None
+    match_id: UUID | None = None

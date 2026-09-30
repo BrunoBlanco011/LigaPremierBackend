@@ -23,18 +23,9 @@ class PlayerService:
         return self.repos.players.list(filters=filters, order_by=["jersey_number", "full_name"])
 
     def list_visible(self, actor: Actor | None, team_id: UUID) -> list[Player]:
-        """Vista publica del roster: oculta datos personales a quien no administra el equipo."""
+        """El publico ve solo jugadores activos; admin y coach del equipo ven tambien las bajas."""
         team = self.teams.get(team_id)
-        players = self.list_by_team(team_id, include_inactive=self.can_manage_team(actor, team))
-        if self.can_manage_team(actor, team):
-            return players
-        return [p.model_copy(update={"birth_date": None}) for p in players]
-
-    def get_visible(self, actor: Actor | None, player_id: UUID) -> Player:
-        player = self.get(player_id)
-        if self.can_manage_team(actor, self.teams.get(player.team_id)):
-            return player
-        return player.model_copy(update={"birth_date": None})
+        return self.list_by_team(team_id, include_inactive=self.can_manage_team(actor, team))
 
     def get(self, player_id: UUID) -> Player:
         player = self.repos.players.get(player_id)

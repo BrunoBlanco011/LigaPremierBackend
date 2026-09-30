@@ -34,7 +34,7 @@ def upload_logo(team_id: UUID, _: AdminActor, service: Teams, file: UploadFile =
 
 # ------------------------------------------------------------ jugadores
 @router.get("/teams/{team_id}/players", response_model=list[Player], tags=["Jugadores"],
-            summary="Roster del equipo (datos personales solo para admin y su coach)")
+            summary="Roster del equipo (las bajas solo las ven el admin y su coach)")
 def list_players(team_id: UUID, actor: OptionalActor, service: Players):
     return service.list_visible(actor, team_id)
 
@@ -46,8 +46,8 @@ def create_player(team_id: UUID, data: PlayerCreate, actor: CurrentActor, servic
 
 
 @router.get("/players/{player_id}", response_model=Player, tags=["Jugadores"])
-def get_player(player_id: UUID, actor: OptionalActor, service: Players):
-    return service.get_visible(actor, player_id)
+def get_player(player_id: UUID, service: Players):
+    return service.get(player_id)
 
 
 @router.patch("/players/{player_id}", response_model=Player, tags=["Jugadores"])

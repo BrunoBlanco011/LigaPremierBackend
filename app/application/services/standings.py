@@ -32,7 +32,6 @@ class StandingsService:
                 team=TeamSummary(id=r.team_id, name=r.team_name, logo_url=r.logo_url),
                 played=r.played,
                 won=r.won,
-                drawn=r.drawn,
                 lost=r.lost,
                 points_for=r.points_for,
                 points_against=r.points_against,

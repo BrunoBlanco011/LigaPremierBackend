@@ -1,5 +1,6 @@
 """Modelos de lectura: vistas enriquecidas pensadas para el frontend."""
 
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -31,7 +32,6 @@ class StandingView(BaseModel):
     team: TeamSummary
     played: int
     won: int
-    drawn: int
     lost: int
     points_for: int
     points_against: int
@@ -58,3 +58,25 @@ class PlayerTotalsView(BaseModel):
 class PlayerStatsDetail(BaseModel):
     totals: PlayerTotalsView
     matches: list[PlayerMatchStats]
+
+
+class ScheduleResult(BaseModel):
+    rounds_created: int
+    matches_created: int
+
+
+class TeamBalanceView(BaseModel):
+    team: TeamSummary
+    registration_fees: Decimal
+    fines: Decimal
+    other_charges: Decimal
+    total_charges: Decimal
+    payments: Decimal
+    balance: Decimal
+
+
+class FinanceSummary(BaseModel):
+    teams: list[TeamBalanceView]
+    total_charges: Decimal
+    total_payments: Decimal
+    total_balance: Decimal

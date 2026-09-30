@@ -5,16 +5,17 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Response, status
 
-from app.api.deps import AdminActor, Matches, Rounds, Standings, Stats, Teams, Tournaments
+from app.api.deps import AdminActor, Matches, Rounds, Schedule, Standings, Stats, Teams, Tournaments
 from app.application.dto import (
     AdjustmentCreate,
     MatchCreate,
     RoundCreate,
+    ScheduleGenerate,
     TeamCreate,
     TournamentCreate,
     TournamentUpdate,
 )
-from app.application.read_models import MatchView, PlayerTotalsView, StandingView
+from app.application.read_models import MatchView, PlayerTotalsView, ScheduleResult, StandingView
 from app.application.services.stats import StatSortField
 from app.domain.entities import Round, StandingAdjustment, Team, Tournament
 from app.domain.enums import MatchStatus, TournamentStatus
@@ -70,6 +71,13 @@ def list_rounds(tournament_id: UUID, service: Rounds):
 @router.post("/{tournament_id}/rounds", response_model=Round, status_code=status.HTTP_201_CREATED, tags=["Jornadas"])
 def create_round(tournament_id: UUID, data: RoundCreate, _: AdminActor, service: Rounds):
     return service.create(tournament_id, data)
+
+
+@router.post("/{tournament_id}/schedule/generate", response_model=ScheduleResult,
+             status_code=status.HTTP_201_CREATED, tags=["Jornadas"],
+             summary="Generar rol de juegos todos contra todos (con BYE si los equipos son impares)")
+def generate_schedule(tournament_id: UUID, data: ScheduleGenerate, _: AdminActor, service: Schedule):
+    return service.generate(tournament_id, data)
 
 
 # ------------------------------------------------------------ partidos

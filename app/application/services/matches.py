@@ -10,6 +10,7 @@ from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.entities import Match
 from app.domain.enums import MatchStatus
 from app.domain.repositories import Repositories
+from app.domain.rules import forfeit_scores
 from app.domain.standings import winner_team_id
 
 
@@ -93,11 +94,15 @@ class MatchService:
                 raise ValidationError("La jornada no pertenece al torneo")
 
         status = MatchStatus(data["status"])
-        if status == MatchStatus.FINISHED and (data["home_score"] is None or data["away_score"] is None):
-            raise ValidationError("Un partido finalizado requiere el marcador de ambos equipos")
+        if status == MatchStatus.FINISHED:
+            if data["home_score"] is None or data["away_score"] is None:
+                raise ValidationError("Un partido finalizado requiere el marcador de ambos equipos")
+            if data["home_score"] == data["away_score"]:
+                raise ValidationError("No hay empates: captura el marcador final incluyendo el tiempo extra")
         if status == MatchStatus.FORFEIT:
             if data["forfeit_loser_team_id"] not in (home, away):
                 raise ValidationError("Indica en forfeit_loser_team_id que equipo pierde por forfeit")
+            data["home_score"], data["away_score"] = forfeit_scores(home, data["forfeit_loser_team_id"])
         else:
             data["forfeit_loser_team_id"] = None
         return data

@@ -53,13 +53,14 @@ def test_forfeit_loser_loses_regardless_of_score():
     assert by_name["LOBOS"].lost == 1
 
 
-def test_draw_and_adjustments():
+def test_adjustments_add_or_subtract_points():
     t, toros, lobos, snakes = _setup()
-    adjustments = [StandingAdjustment(id=uuid4(), tournament_id=t.id, team_id=lobos.id, points=-1, reason="Multa")]
-    table = compute_standings(t, [toros, lobos], [_match(toros, lobos, 14, 14)], adjustments)
+    adjustments = [StandingAdjustment(id=uuid4(), tournament_id=t.id, team_id=toros.id, points=-3, reason="Multa")]
+    table = compute_standings(t, [toros, lobos], [_match(toros, lobos, 20, 14)], adjustments)
     by_name = {r.team_name: r for r in table}
-    assert by_name["TOROS"].drawn == 1 and by_name["TOROS"].points == 1
-    assert by_name["LOBOS"].points == 0 and by_name["LOBOS"].adjustment_reasons == ["Multa"]
+    assert by_name["TOROS"].won == 1 and by_name["TOROS"].points == -1
+    assert by_name["TOROS"].adjustment_reasons == ["Multa"]
+    assert [r.team_name for r in table] == ["LOBOS", "TOROS"]
 
 
 def test_tiebreak_by_point_difference_then_points_for():

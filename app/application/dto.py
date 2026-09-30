@@ -5,12 +5,13 @@ descarta los `null` en campos que no pueden quedar vacios en la base.
 """
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Annotated, Any, ClassVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
-from app.domain.enums import MatchStatus, TournamentStatus, UserRole
+from app.domain.enums import FinanceMovementType, MatchStatus, TournamentStatus, UserRole
 
 ShortText = Annotated[str, Field(min_length=1, max_length=120)]
 
@@ -35,7 +36,6 @@ class TournamentCreate(Command):
     end_date: date | None = None
     status: TournamentStatus = TournamentStatus.DRAFT
     points_win: int = Field(default=2, ge=0, le=10)
-    points_draw: int = Field(default=1, ge=0, le=10)
     points_loss: int = Field(default=0, ge=0, le=10)
 
     @model_validator(mode="after")
@@ -46,7 +46,7 @@ class TournamentCreate(Command):
 
 
 class TournamentUpdate(Command):
-    NON_NULLABLE = frozenset({"name", "status", "points_win", "points_draw", "points_loss"})
+    NON_NULLABLE = frozenset({"name", "status", "points_win", "points_loss"})
 
     name: str | None = Field(default=None, min_length=1, max_length=120)
     season: str | None = Field(default=None, max_length=60)
@@ -56,7 +56,6 @@ class TournamentUpdate(Command):
     end_date: date | None = None
     status: TournamentStatus | None = None
     points_win: int | None = Field(default=None, ge=0, le=10)
-    points_draw: int | None = Field(default=None, ge=0, le=10)
     points_loss: int | None = Field(default=None, ge=0, le=10)
 
 
@@ -79,8 +78,6 @@ class TeamUpdate(Command):
 class PlayerCreate(Command):
     full_name: ShortText
     jersey_number: int | None = Field(default=None, ge=0, le=999)
-    position: str | None = Field(default=None, max_length=40)
-    birth_date: date | None = None
     is_active: bool = True
 
 
@@ -89,8 +86,6 @@ class PlayerUpdate(Command):
 
     full_name: str | None = Field(default=None, min_length=1, max_length=120)
     jersey_number: int | None = Field(default=None, ge=0, le=999)
-    position: str | None = Field(default=None, max_length=40)
-    birth_date: date | None = None
     is_active: bool | None = None
 
 
@@ -100,6 +95,7 @@ class RoundCreate(Command):
     name: str | None = Field(default=None, max_length=120)
     start_date: date | None = None
     end_date: date | None = None
+    bye_team_id: UUID | None = None
 
 
 class RoundUpdate(Command):
@@ -109,6 +105,7 @@ class RoundUpdate(Command):
     name: str | None = Field(default=None, max_length=120)
     start_date: date | None = None
     end_date: date | None = None
+    bye_team_id: UUID | None = None
 
 
 # ---------------------------------------------------------------- Partidos
@@ -141,10 +138,14 @@ class MatchUpdate(Command):
 
 
 class MatchResult(Command):
-    """Captura/correccion rapida del resultado de un partido."""
+    """Captura/correccion rapida del resultado de un partido.
 
-    home_score: int = Field(ge=0, le=999)
-    away_score: int = Field(ge=0, le=999)
+    Marcador final incluyendo tiempo extra (no hay empates). En un forfeit
+    basta con `forfeit_loser_team_id`: el marcador se fija en 21-0.
+    """
+
+    home_score: int | None = Field(default=None, ge=0, le=999)
+    away_score: int | None = Field(default=None, ge=0, le=999)
     status: MatchStatus = MatchStatus.FINISHED
     forfeit_loser_team_id: UUID | None = None
     notes: str | None = Field(default=None, max_length=1000)
@@ -173,6 +174,50 @@ class PlayerStatLine(Command):
     interceptions: int = Field(default=0, ge=0, le=99)
     sacks: int = Field(default=0, ge=0, le=99)
     tackles: int = Field(default=0, ge=0, le=99)
+
+
+# ---------------------------------------------------------------- Rol de juegos
+class ScheduleGenerate(Command):
+    """Genera jornadas y partidos todos contra todos con los equipos del torneo."""
+
+    start_date: date | None = Field(default=None, description="Fecha de la jornada 1")
+    days_between_rounds: int = Field(default=7, ge=1, le=60)
+    double_round: bool = Field(default=False, description="Ida y vuelta")
+    replace_existing: bool = Field(
+        default=False,
+        description="Borra jornadas y partidos existentes (solo si ningun partido se ha jugado)",
+    )
+
+
+# ---------------------------------------------------------------- Finanzas
+Money = Annotated[Decimal, Field(gt=0, max_digits=10, decimal_places=2)]
+
+
+class FinanceMovementCreate(Command):
+    team_id: UUID
+    type: FinanceMovementType
+    amount: Money
+    description: str | None = Field(default=None, max_length=300)
+    occurred_on: date | None = None
+    match_id: UUID | None = None
+
+
+class FinanceMovementUpdate(Command):
+    NON_NULLABLE = frozenset({"type", "amount", "occurred_on"})
+
+    type: FinanceMovementType | None = None
+    amount: Money | None = None
+    description: str | None = Field(default=None, max_length=300)
+    occurred_on: date | None = None
+    match_id: UUID | None = None
+
+
+class RegistrationFeeCreate(Command):
+    """Carga la inscripcion a todos los equipos del torneo que aun no la tengan."""
+
+    amount: Money
+    description: str | None = Field(default="Inscripcion", max_length=300)
+    occurred_on: date | None = None
 
 
 # ---------------------------------------------------------------- Usuarios

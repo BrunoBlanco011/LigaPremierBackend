@@ -12,9 +12,11 @@ from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.application.actor import Actor
+from app.application.services.finance import FinanceService
 from app.application.services.matches import MatchService
 from app.application.services.players import PlayerService
 from app.application.services.rounds import RoundService
+from app.application.services.schedule import ScheduleService
 from app.application.services.standings import StandingsService
 from app.application.services.stats import StatsService
 from app.application.services.teams import TeamService
@@ -78,6 +80,14 @@ def get_match_service(repos: Repos) -> MatchService:
     return MatchService(repos)
 
 
+def get_schedule_service(repos: Repos) -> ScheduleService:
+    return ScheduleService(repos)
+
+
+def get_finance_service(repos: Repos) -> FinanceService:
+    return FinanceService(repos)
+
+
 def get_standings_service(repos: Repos) -> StandingsService:
     return StandingsService(repos)
 
@@ -136,6 +146,8 @@ Teams = Annotated[TeamService, Depends(get_team_service)]
 Players = Annotated[PlayerService, Depends(get_player_service)]
 Rounds = Annotated[RoundService, Depends(get_round_service)]
 Matches = Annotated[MatchService, Depends(get_match_service)]
+Schedule = Annotated[ScheduleService, Depends(get_schedule_service)]
+Finance = Annotated[FinanceService, Depends(get_finance_service)]
 Standings = Annotated[StandingsService, Depends(get_standings_service)]
 Stats = Annotated[StatsService, Depends(get_stats_service)]
 Users = Annotated[UserService, Depends(get_user_service)]

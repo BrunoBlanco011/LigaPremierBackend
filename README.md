@@ -1,7 +1,10 @@
 # Liga Premier – Backend
 
 API para administrar los torneos de **tocho bandera** de la Liga Premier: torneos, equipos, jugadores,
-jornadas, partidos, tabla de posiciones automática y estadísticas por jugador.
+jornadas, rol de juegos automático, partidos, tabla de posiciones automática, estadísticas por jugador
+y finanzas.
+
+> Requerimientos funcionales para el frontend: [`docs/REQUERIMIENTOS_FUNCIONALES.md`](docs/REQUERIMIENTOS_FUNCIONALES.md)
 
 **Stack:** FastAPI · Supabase (Postgres + Auth + Storage) · Pydantic v2
 
@@ -30,7 +33,7 @@ Para cambiar de base de datos o agregar caché basta con otra implementación de
 | Rol | Puede |
 |-----|-------|
 | **Público** (sin token) | Consultar torneos, equipos, rosters, jornadas, partidos, tabla y estadísticas |
-| **admin** | CRUD completo: torneos, equipos (+logo), jornadas, partidos, resultados, ajustes de tabla, estadísticas y usuarios |
+| **admin** | CRUD completo: torneos, equipos (+logo), jornadas, rol de juegos, partidos, resultados, ajustes de tabla, estadísticas, finanzas y usuarios |
 | **coach** | CRUD de jugadores **solo** de los equipos que tiene asignados (`teams.coach_user_id`) |
 
 ## Reglas de la tabla de posiciones
@@ -38,16 +41,17 @@ Para cambiar de base de datos o agregar caché basta con otra implementación de
 Se calcula siempre en tiempo real a partir de los partidos, así que nunca se desincroniza:
 
 - Cuentan los partidos `finished` y `forfeit`. Los `scheduled`, `postponed` y `cancelled` (p. ej. por lluvia) no cuentan.
-- Puntos por torneo configurables: `points_win` (2), `points_draw` (1), `points_loss` (0).
-- En un forfeit pierde `forfeit_loser_team_id`, sin importar el marcador capturado.
+- **No hay empates**: se juega tiempo extra. Un partido `finished` con marcador empatado se rechaza.
+- Puntos por torneo configurables: `points_win` (2) y `points_loss` (0).
+- **Forfeit**: pierde `forfeit_loser_team_id` con marcador fijo **21-0** (lo pone el sistema).
 - Desempate: puntos → diferencia → puntos a favor → menos puntos en contra → nombre.
 - **Modificar la tabla:** se corrige el resultado (`PUT /matches/{id}/result`) o se registra un ajuste
   manual de puntos con su motivo (`POST /tournaments/{id}/standings/adjustments`), por ejemplo una multa.
 
 ## Puesta en marcha
 
-1. **Base de datos:** ejecuta `supabase/migrations/20260929000000_init.sql` en el SQL Editor de Supabase
-   (o con `supabase db push`). Crea las tablas, el trigger de perfiles y el bucket público `team-logos`.
+1. **Base de datos:** ejecuta **en orden** los archivos de `supabase/migrations/` en el SQL Editor de Supabase
+   (o con `supabase db push`). Crean las tablas, el trigger de perfiles y el bucket público `team-logos`.
 2. **Variables:** copia `.env.example` a `.env` y llena `SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY`.
 3. **Primer admin:** crea un usuario en *Authentication → Users* y promuévelo:
    ```sql
@@ -78,10 +82,11 @@ pytest
 | Torneos | `GET/POST /tournaments`, `GET/PATCH/DELETE /tournaments/{id}` |
 | Equipos | `GET/POST /tournaments/{id}/teams`, `GET/PATCH/DELETE /teams/{id}`, `POST /teams/{id}/logo` |
 | Jugadores | `GET/POST /teams/{id}/players`, `GET/PATCH/DELETE /players/{id}` |
-| Jornadas | `GET/POST /tournaments/{id}/rounds`, `GET/PATCH/DELETE /rounds/{id}` |
+| Jornadas | `GET/POST /tournaments/{id}/rounds`, `GET/PATCH/DELETE /rounds/{id}`, `POST /tournaments/{id}/schedule/generate` |
 | Partidos | `GET/POST /tournaments/{id}/matches` (filtros `round_id`, `team_id`, `status`), `GET/PATCH/DELETE /matches/{id}`, `PUT /matches/{id}/result` |
 | Tabla | `GET /tournaments/{id}/standings`, `GET/POST /tournaments/{id}/standings/adjustments`, `PATCH/DELETE /standing-adjustments/{id}` |
 | Estadísticas | `GET/PUT /matches/{id}/stats`, `DELETE /matches/{id}/stats/{player_id}`, `GET /players/{id}/stats`, `GET /tournaments/{id}/player-stats?sort_by=touchdowns&limit=10` |
+| Finanzas (admin) | `GET /tournaments/{id}/finance/summary`, `GET/POST /tournaments/{id}/finance/movements`, `POST /tournaments/{id}/finance/registration-fees`, `PATCH/DELETE /finance/movements/{id}` |
 
 Estadísticas por jugador (basadas en la hoja del ROL DE JUEGOS): asistencia, anotaciones (`touchdowns`),
 pases de anotación (`td_passes`), intercepciones, capturas (`sacks`) y tackles.

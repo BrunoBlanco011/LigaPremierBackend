@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from app.core.exceptions import AuthenticationError
 from app.domain.entities import (
+    FinanceMovement,
     Match,
     Player,
     PlayerMatchStats,
@@ -62,6 +63,9 @@ class InMemoryRepository(Generic[T]):
         entity = self.model.model_validate({"id": uuid4(), "created_at": now, "updated_at": now, **data})
         self.rows[entity.id] = entity
         return entity
+
+    def create_many(self, rows: Sequence[Mapping[str, Any]]) -> list[T]:
+        return [self.create(r) for r in rows]
 
     def update(self, entity_id: UUID, data: Mapping[str, Any]) -> T | None:
         current = self.get(entity_id)
@@ -125,4 +129,5 @@ def build_fake_repositories() -> Repositories:
         matches=InMemoryRepository(Match),
         adjustments=InMemoryRepository(StandingAdjustment),
         player_stats=InMemoryRepository(PlayerMatchStats),
+        finance=InMemoryRepository(FinanceMovement),
     )

@@ -62,7 +62,7 @@ def test_coach_manages_only_own_team_players():
     other = env.team(t["id"], "TOROS")
 
     r = env.client.post(f"{API}/teams/{mine['id']}/players",
-                        json={"full_name": "Marcos Rincon", "jersey_number": 17, "birth_date": "2000-01-01"},
+                        json={"full_name": "Marcos Rincon", "jersey_number": 17},
                         headers=env.as_coach)
     assert r.status_code == 201, r.text
     player = r.json()
@@ -77,11 +77,15 @@ def test_coach_manages_only_own_team_players():
     r = env.client.patch(f"{API}/players/{player['id']}", json={"jersey_number": 7}, headers=env.as_coach)
     assert r.status_code == 200 and r.json()["jersey_number"] == 7
 
-    # Publico: no ve la fecha de nacimiento
-    public = env.client.get(f"{API}/teams/{mine['id']}/players").json()
-    assert public[0]["birth_date"] is None
-    private = env.client.get(f"{API}/teams/{mine['id']}/players", headers=env.as_coach).json()
-    assert private[0]["birth_date"] == "2000-01-01"
+    # Una baja deja de verse en el roster publico, pero el coach la sigue viendo
+    env.client.patch(f"{API}/players/{player['id']}", json={"is_active": False}, headers=env.as_coach)
+    assert env.client.get(f"{API}/teams/{mine['id']}/players").json() == []
+    assert len(env.client.get(f"{API}/teams/{mine['id']}/players", headers=env.as_coach).json()) == 1
+
+    # Solo nombre y numero: otros campos se rechazan
+    extra = env.client.post(f"{API}/teams/{mine['id']}/players", json={"full_name": "X", "birth_date": "2000-01-01"},
+                            headers=env.as_coach)
+    assert extra.status_code == 422
 
     assert env.client.delete(f"{API}/players/{player['id']}", headers=env.as_coach).status_code == 204
 
@@ -135,11 +139,17 @@ def test_result_updates_standings_and_can_be_corrected():
     table = env.client.get(f"{API}/tournaments/{t['id']}/standings").json()
     assert table[0]["team"]["name"] == "LOBOS"
 
-    # Forfeit
+    # No hay empates
+    r = env.client.put(f"{API}/matches/{m['id']}/result", json={"home_score": 20, "away_score": 20},
+                       headers=env.as_admin)
+    assert r.status_code == 422
+
+    # Forfeit: el marcador se fija en 21-0 sin importar lo que se envie
     r = env.client.put(f"{API}/matches/{m['id']}/result",
-                       json={"home_score": 0, "away_score": 21, "status": "forfeit",
-                             "forfeit_loser_team_id": lobos["id"]}, headers=env.as_admin)
-    assert r.status_code == 200 and r.json()["winner_team_id"] == toros["id"]
+                       json={"status": "forfeit", "forfeit_loser_team_id": lobos["id"]}, headers=env.as_admin)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["winner_team_id"] == toros["id"] and (body["home_score"], body["away_score"]) == (0, 21)
 
     # Volver a 'finished' limpia el perdedor por forfeit
     r = env.client.patch(f"{API}/matches/{m['id']}", json={"status": "finished"}, headers=env.as_admin)
@@ -215,3 +225,74 @@ def test_admin_creates_coach_and_coach_logs_in():
     assert env.client.post(f"{API}/auth/login", json={"email": "nuevo@liga.mx", "password": "mal"}).status_code == 401
     r = env.client.patch(f"{API}/users/{env.admin.id}", json={"role": "coach"}, headers=env.as_admin)
     assert r.status_code == 422  # no puedes quitarte tu propio rol
+
+
+# ------------------------------------------------------------ rol de juegos
+def test_generate_round_robin_schedule():
+    env = Env()
+    t = env.tournament()
+    teams = [env.team(t["id"], name) for name in ("TOROS", "LOBOS", "SNAKES", "CHARS", "OLIMPO")]
+    url = f"{API}/tournaments/{t['id']}/schedule/generate"
+
+    assert env.client.post(url, json={}, headers=env.as_coach).status_code == 403
+    r = env.client.post(url, json={"start_date": "2026-05-18"}, headers=env.as_admin)
+    assert r.status_code == 201, r.text
+    assert r.json() == {"rounds_created": 5, "matches_created": 10}  # 5 equipos: 5 jornadas, 1 descansa
+
+    rounds = env.client.get(f"{API}/tournaments/{t['id']}/rounds").json()
+    assert [r["start_date"] for r in rounds][:2] == ["2026-05-18", "2026-05-25"]
+    assert {r["bye_team_id"] for r in rounds} == {team["id"] for team in teams}  # cada equipo descansa una vez
+
+    matches = env.client.get(f"{API}/tournaments/{t['id']}/matches").json()
+    assert len({frozenset((m["home_team_id"], m["away_team_id"])) for m in matches}) == 10
+
+    # Regenerar exige confirmacion y se bloquea si ya se jugo algun partido
+    assert env.client.post(url, json={}, headers=env.as_admin).status_code == 409
+    r = env.client.post(url, json={"replace_existing": True, "double_round": True}, headers=env.as_admin)
+    assert r.json() == {"rounds_created": 10, "matches_created": 20}
+    first = env.client.get(f"{API}/tournaments/{t['id']}/matches").json()[0]
+    env.client.put(f"{API}/matches/{first['id']}/result", json={"home_score": 7, "away_score": 14},
+                   headers=env.as_admin)
+    assert env.client.post(url, json={"replace_existing": True}, headers=env.as_admin).status_code == 409
+
+
+# ------------------------------------------------------------ finanzas
+def test_finance_is_admin_only_and_computes_balance():
+    env = Env()
+    t = env.tournament()
+    tucanes = env.team(t["id"], "TUCANES", coach_user_id=str(env.coach.id))
+    old_star = env.team(t["id"], "OLD STAR")
+    base = f"{API}/tournaments/{t['id']}/finance"
+
+    assert env.client.get(f"{base}/summary").status_code == 401
+    assert env.client.get(f"{base}/summary", headers=env.as_coach).status_code == 403
+
+    r = env.client.post(f"{base}/registration-fees", json={"amount": 800}, headers=env.as_admin)
+    assert r.status_code == 201 and len(r.json()) == 2
+    # Repetir no duplica la inscripcion
+    assert env.client.post(f"{base}/registration-fees", json={"amount": 800}, headers=env.as_admin).json() == []
+
+    # Como en el Excel: TUCANES inscripcion 800 + multas 1600 - abonos 350 = debe 2050
+    for body in (
+        {"team_id": tucanes["id"], "type": "fine", "amount": 700, "description": "Pierde por forfeit"},
+        {"team_id": tucanes["id"], "type": "fine", "amount": 900, "description": "Cambio de fecha"},
+        {"team_id": tucanes["id"], "type": "payment", "amount": 350},
+        {"team_id": old_star["id"], "type": "payment", "amount": 800},
+    ):
+        assert env.client.post(f"{base}/movements", json=body, headers=env.as_admin).status_code == 201
+
+    assert env.client.post(f"{base}/movements", json={"team_id": tucanes["id"], "type": "fine", "amount": -5},
+                           headers=env.as_admin).status_code == 422
+
+    summary = env.client.get(f"{base}/summary", headers=env.as_admin).json()
+    by_team = {row["team"]["name"]: row for row in summary["teams"]}
+    assert float(by_team["TUCANES"]["balance"]) == 2050
+    assert float(by_team["TUCANES"]["fines"]) == 1600
+    assert float(by_team["OLD STAR"]["balance"]) == 0
+    assert float(summary["total_balance"]) == 2050
+
+    fines = env.client.get(f"{base}/movements", params={"type": "fine"}, headers=env.as_admin).json()
+    assert len(fines) == 2
+    r = env.client.patch(f"{API}/finance/movements/{fines[0]['id']}", json={"amount": 100}, headers=env.as_admin)
+    assert r.status_code == 200
+    assert env.client.delete(f"{API}/finance/movements/{fines[0]['id']}", headers=env.as_admin).status_code == 204

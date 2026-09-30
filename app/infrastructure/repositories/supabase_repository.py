@@ -85,6 +85,13 @@ class SupabaseRepository(Generic[T]):
             response = self._query().insert(_json(dict(data))).execute()
         return self._parse(response.data)[0]
 
+    def create_many(self, rows: Sequence[Mapping[str, Any]]) -> list[T]:
+        if not rows:
+            return []
+        with translate_errors():
+            response = self._query().insert(_json([dict(r) for r in rows])).execute()
+        return self._parse(response.data)
+
     def update(self, entity_id: UUID, data: Mapping[str, Any]) -> T | None:
         with translate_errors():
             response = self._query().update(_json(dict(data))).eq("id", str(entity_id)).execute()
