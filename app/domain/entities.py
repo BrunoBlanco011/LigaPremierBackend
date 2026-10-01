@@ -117,3 +117,12 @@ class FinanceMovement(Entity):
     description: str | None = None
     occurred_on: date | None = None
     match_id: UUID | None = None
+
+
+class ClubInvite(Entity):
+    """Link temporal para que los jugadores se den de alta en un club."""
+
+    club_id: UUID
+    token: str
+    expires_at: datetime
+    created_by: UUID | None = None

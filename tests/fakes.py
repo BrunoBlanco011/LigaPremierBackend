@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from app.core.exceptions import AuthenticationError
 from app.domain.entities import (
     Club,
+    ClubInvite,
     FinanceMovement,
     Match,
     Player,
@@ -155,4 +156,5 @@ def build_fake_repositories() -> Repositories:
         adjustments=InMemoryRepository(StandingAdjustment),
         player_stats=InMemoryRepository(PlayerMatchStats),
         finance=InMemoryRepository(FinanceMovement),
+        club_invites=InMemoryRepository(ClubInvite),
     )

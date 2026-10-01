@@ -2,10 +2,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, File, Response, UploadFile, status
 
-from app.api.deps import AdminActor, Clubs, CurrentActor, OptionalActor, Players
+from app.api.deps import AdminActor, Clubs, CurrentActor, Invites, OptionalActor, Players
 from app.application.dto import ClubCreate, ClubUpdate, PlayerCreate
 from app.application.read_models import ClubSeason
-from app.domain.entities import Club, Player
+from app.domain.entities import Club, ClubInvite, Player
 
 router = APIRouter(prefix="/clubs", tags=["Clubes"])
 
@@ -25,9 +25,9 @@ def get_club(club_id: UUID, service: Clubs):
     return service.get(club_id)
 
 
-@router.patch("/{club_id}", response_model=Club)
-def update_club(club_id: UUID, data: ClubUpdate, _: AdminActor, service: Clubs):
-    return service.update(club_id, data)
+@router.patch("/{club_id}", response_model=Club, summary="Editar club (admin, o el coach de ese club)")
+def update_club(club_id: UUID, data: ClubUpdate, actor: CurrentActor, service: Clubs):
+    return service.update(actor, club_id, data)
 
 
 @router.delete("/{club_id}", status_code=status.HTTP_204_NO_CONTENT,
@@ -37,11 +37,18 @@ def delete_club(club_id: UUID, _: AdminActor, service: Clubs):
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{club_id}/logo", response_model=Club, summary="Subir/reemplazar el logo (png, jpg, webp, svg)")
-def upload_logo(club_id: UUID, _: AdminActor, service: Clubs, file: UploadFile = File(...)):
+@router.post("/{club_id}/logo", response_model=Club, summary="Subir/reemplazar el logo (admin o coach del club)")
+def upload_logo(club_id: UUID, actor: CurrentActor, service: Clubs, file: UploadFile = File(...)):
     # Endpoint sincrono: FastAPI lo corre en un threadpool y la subida a Storage no bloquea el event loop
     content = file.file.read(service.max_logo_bytes + 1)
-    return service.upload_logo(club_id, content, file.content_type, file.filename)
+    return service.upload_logo(actor, club_id, content, file.content_type, file.filename)
+
+
+@router.post("/{club_id}/invites", response_model=ClubInvite, status_code=status.HTTP_201_CREATED,
+             tags=["Invitaciones"],
+             summary="Generar link de invitacion (24h) para que los jugadores se den de alta solos")
+def create_invite(club_id: UUID, actor: CurrentActor, service: Invites):
+    return service.create(actor, club_id)
 
 
 @router.get("/{club_id}/history", response_model=list[ClubSeason],

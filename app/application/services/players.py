@@ -72,6 +72,13 @@ class PlayerService:
         self._ensure_can_manage(actor, self.clubs.get(player.club_id))
         self.repos.players.delete(player_id)
 
+    def register_via_invite(self, club_id: UUID, data: PlayerCreate) -> Player:
+        """Alta publica desde un link de invitacion (el token ya fue validado)."""
+        self.clubs.get(club_id)
+        if data.is_active:
+            self._ensure_jersey_free(club_id, data.jersey_number)
+        return self.repos.players.create({**data.model_dump(), "club_id": club_id})
+
     def _ensure_can_manage(self, actor: Actor, club: Club) -> None:
         if not self.can_manage_club(actor, club):
             raise PermissionDeniedError("Solo puedes administrar jugadores de tu propio club")

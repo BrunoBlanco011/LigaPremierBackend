@@ -13,6 +13,7 @@ from uuid import UUID
 
 from app.domain.entities import (
     Club,
+    ClubInvite,
     FinanceMovement,
     Match,
     Player,
@@ -95,3 +96,4 @@ class Repositories:
     adjustments: Repository[StandingAdjustment]
     player_stats: Repository[PlayerMatchStats]
     finance: Repository[FinanceMovement]
+    club_invites: Repository[ClubInvite]

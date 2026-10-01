@@ -13,6 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.application.actor import Actor
 from app.application.services.finance import FinanceService
+from app.application.services.invites import InviteService
 from app.application.services.matches import MatchService
 from app.application.services.clubs import ClubService
 from app.application.services.players import PlayerService
@@ -75,6 +76,14 @@ def get_team_service(repos: Repos) -> TeamService:
 
 def get_player_service(repos: Repos, clubs: Annotated[ClubService, Depends(get_club_service)]) -> PlayerService:
     return PlayerService(repos, clubs)
+
+
+def get_invite_service(
+    repos: Repos,
+    clubs: Annotated[ClubService, Depends(get_club_service)],
+    players: Annotated[PlayerService, Depends(get_player_service)],
+) -> InviteService:
+    return InviteService(repos, clubs, players)
 
 
 def get_round_service(repos: Repos) -> RoundService:
@@ -150,6 +159,7 @@ Tournaments = Annotated[TournamentService, Depends(get_tournament_service)]
 Clubs = Annotated[ClubService, Depends(get_club_service)]
 Teams = Annotated[TeamService, Depends(get_team_service)]
 Players = Annotated[PlayerService, Depends(get_player_service)]
+Invites = Annotated[InviteService, Depends(get_invite_service)]
 Rounds = Annotated[RoundService, Depends(get_round_service)]
 Matches = Annotated[MatchService, Depends(get_match_service)]
 Schedule = Annotated[ScheduleService, Depends(get_schedule_service)]

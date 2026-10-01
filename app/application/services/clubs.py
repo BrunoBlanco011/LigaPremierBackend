@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import PurePath
 from uuid import UUID, uuid4
 
+from app.application.actor import Actor
 from app.application.dto import ClubCreate, ClubUpdate
 from app.application.read_models import ClubSeason
 from app.application.services.standings import StandingsService
-from app.core.exceptions import ConflictError, NotFoundError, ValidationError
+from app.core.exceptions import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
 from app.domain.entities import Club
 from app.domain.enums import UserRole
 from app.domain.repositories import FileStorage, Repositories
@@ -40,9 +41,13 @@ class ClubService:
             self._ensure_coach(data.coach_user_id)
         return self.repos.clubs.create(data.model_dump())
 
-    def update(self, club_id: UUID, data: ClubUpdate) -> Club:
+    def update(self, actor: Actor, club_id: UUID, data: ClubUpdate) -> Club:
         club = self.get(club_id)
+        self._ensure_can_manage(actor, club)
         changes = data.changes()
+        # Solo el admin puede reasignar el coach de un club.
+        if not actor.is_admin and "coach_user_id" in changes:
+            raise PermissionDeniedError("Solo el administrador puede reasignar el coach del club")
         if "name" in changes and changes["name"].lower() != club.name.lower():
             self._ensure_unique_name(changes["name"])
         if changes.get("coach_user_id"):
@@ -60,8 +65,11 @@ class ClubService:
         if club.logo_path:
             self.storage.delete(club.logo_path)
 
-    def upload_logo(self, club_id: UUID, content: bytes, content_type: str | None, filename: str | None) -> Club:
+    def upload_logo(
+        self, actor: Actor, club_id: UUID, content: bytes, content_type: str | None, filename: str | None
+    ) -> Club:
         club = self.get(club_id)
+        self._ensure_can_manage(actor, club)
         if content_type not in ALLOWED_LOGO_TYPES:
             raise ValidationError(f"Formato no permitido. Usa: {', '.join(ALLOWED_LOGO_TYPES)}")
         if not content:
@@ -96,6 +104,15 @@ class ClubService:
             seasons.append(ClubSeason(tournament=tournament, team_id=team.id, standing=row, teams_count=len(table)))
         seasons.sort(key=lambda s: (s.tournament.start_date is None, s.tournament.start_date), reverse=True)
         return seasons
+
+    @staticmethod
+    def can_manage(actor: Actor | None, club: Club) -> bool:
+        """Admin gestiona cualquier club; un coach solo el suyo."""
+        return actor is not None and (actor.is_admin or club.coach_user_id == actor.id)
+
+    def _ensure_can_manage(self, actor: Actor, club: Club) -> None:
+        if not self.can_manage(actor, club):
+            raise PermissionDeniedError("Solo puedes administrar tu propio club")
 
     def _ensure_unique_name(self, name: str) -> None:
         if any(c.name.strip().lower() == name.strip().lower() for c in self.repos.clubs.list()):

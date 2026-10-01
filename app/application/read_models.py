@@ -1,5 +1,6 @@
 """Modelos de lectura: vistas enriquecidas pensadas para el frontend."""
 
+from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -97,3 +98,10 @@ class FinanceSummary(BaseModel):
     total_charges: Decimal
     total_payments: Decimal
     total_balance: Decimal
+
+
+class ClubInviteInfo(BaseModel):
+    """Datos publicos de una invitacion valida (para la pagina de auto-registro)."""
+
+    club: TeamSummary
+    expires_at: datetime

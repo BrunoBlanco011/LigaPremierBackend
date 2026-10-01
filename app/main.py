@@ -15,14 +15,17 @@ def create_app() -> FastAPI:
         description="API para administrar los torneos de tocho bandera de la Liga Premier.",
     )
 
-    if settings.cors_origins:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=settings.cors_origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
+    # En desarrollo, Vite puede usar cualquier puerto (5173, 5174, 5175…):
+    # se acepta cualquier localhost/127.0.0.1 por regex para no romper el CORS.
+    dev = settings.environment == "development"
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+" if dev else None,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.exception_handler(AppError)
     async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
