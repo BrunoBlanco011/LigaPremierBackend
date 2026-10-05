@@ -4,7 +4,8 @@ Los *Update* son parciales: solo se aplican los campos enviados. `changes()`
 descarta los `null` en campos que no pueden quedar vacios en la base.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, time
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from decimal import Decimal
 from typing import Annotated, Any, ClassVar
 from uuid import UUID
@@ -28,35 +29,24 @@ class Command(BaseModel):
 
 # ---------------------------------------------------------------- Torneos
 class TournamentCreate(Command):
+    """La fecha de fin y la temporada no se capturan: el fin lo marca el rol de juegos
+    (depende de cuantos equipos se inscriban) y los puntos son fijos (2 por victoria, 0 por derrota)."""
+
     name: ShortText
-    season: str | None = Field(default=None, max_length=60)
     category: str | None = Field(default=None, max_length=60)
     description: str | None = Field(default=None, max_length=2000)
     start_date: date | None = None
-    end_date: date | None = None
     status: TournamentStatus = TournamentStatus.DRAFT
-    points_win: int = Field(default=2, ge=0, le=10)
-    points_loss: int = Field(default=0, ge=0, le=10)
-
-    @model_validator(mode="after")
-    def _check_dates(self):
-        if self.start_date and self.end_date and self.end_date < self.start_date:
-            raise ValueError("end_date no puede ser anterior a start_date")
-        return self
 
 
 class TournamentUpdate(Command):
-    NON_NULLABLE = frozenset({"name", "status", "points_win", "points_loss"})
+    NON_NULLABLE = frozenset({"name", "status"})
 
     name: str | None = Field(default=None, min_length=1, max_length=120)
-    season: str | None = Field(default=None, max_length=60)
     category: str | None = Field(default=None, max_length=60)
     description: str | None = Field(default=None, max_length=2000)
     start_date: date | None = None
-    end_date: date | None = None
     status: TournamentStatus | None = None
-    points_win: int | None = Field(default=None, ge=0, le=10)
-    points_loss: int | None = Field(default=None, ge=0, le=10)
 
 
 # ---------------------------------------------------------------- Clubes
@@ -188,13 +178,34 @@ class PlayerStatLine(Command):
 class ScheduleGenerate(Command):
     """Genera jornadas y partidos todos contra todos con los equipos del torneo."""
 
-    start_date: date | None = Field(default=None, description="Fecha de la jornada 1")
-    days_between_rounds: int = Field(default=7, ge=1, le=60)
+    start_date: date | None = Field(
+        default=None, description="A partir de esta fecha se programan las jornadas (sin fecha: jornadas sin fecha)"
+    )
+    weekdays: list[Annotated[int, Field(ge=0, le=6)]] = Field(
+        default_factory=list,
+        description="Dias de juego, 0=lunes ... 6=domingo. Vacio: el dia de la semana de start_date",
+    )
+    start_time: time | None = Field(default=None, description="Hora del primer partido de cada jornada")
+    match_duration_minutes: int = Field(
+        default=60, ge=10, le=300, description="Los partidos de una jornada se juegan uno tras otro"
+    )
+    venue: str | None = Field(default=None, max_length=120, description="Sede de todos los partidos generados")
+    timezone: str = Field(default="America/Mexico_City", description="Zona horaria de start_time")
     double_round: bool = Field(default=False, description="Ida y vuelta")
     replace_existing: bool = Field(
         default=False,
         description="Borra jornadas y partidos existentes (solo si ningun partido se ha jugado)",
     )
+
+    @model_validator(mode="after")
+    def _check_schedule(self):
+        if (self.weekdays or self.start_time) and not self.start_date:
+            raise ValueError("Indica la fecha a partir de la cual se programan las jornadas")
+        try:
+            ZoneInfo(self.timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError(f"Zona horaria desconocida: {self.timezone}") from None
+        return self
 
 
 # ---------------------------------------------------------------- Finanzas

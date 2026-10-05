@@ -1,7 +1,8 @@
+from datetime import date
 from itertools import combinations
 from uuid import uuid4
 
-from app.domain.scheduling import round_robin
+from app.domain.scheduling import round_dates, round_robin
 
 
 def _check(n: int) -> None:
@@ -37,3 +38,10 @@ def test_double_round_inverts_home_and_away():
 
 def test_less_than_two_teams():
     assert round_robin([]) == [] and round_robin([uuid4()]) == []
+
+
+def test_round_dates_one_or_more_weekdays():
+    monday = date(2026, 5, 18)
+    assert round_dates(monday, {6}, 3) == [date(2026, 5, 24), date(2026, 5, 31), date(2026, 6, 7)]  # domingos
+    assert round_dates(monday, {5, 6}, 3) == [date(2026, 5, 23), date(2026, 5, 24), date(2026, 5, 30)]  # sab y dom
+    assert round_dates(monday, {0}, 2) == [monday, date(2026, 5, 25)]  # incluye el dia de inicio

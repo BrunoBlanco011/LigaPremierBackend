@@ -15,12 +15,13 @@ def test_public_can_read_but_not_write():
 
 def test_tournament_crud():
     env = Env()
-    t = env.tournament(season="2026", points_win=2)
+    t = env.tournament(category="Mixta")
+    assert (t["points_win"], t["points_loss"], t["end_date"]) == (2, 0, None)
     r = env.client.patch(f"{API}/tournaments/{t['id']}", json={"status": "active"}, headers=env.as_admin)
     assert r.status_code == 200 and r.json()["status"] == "active"
-    r = env.client.patch(f"{API}/tournaments/{t['id']}", json={"start_date": "2026-05-18", "end_date": "2026-05-01"},
-                         headers=env.as_admin)
-    assert r.status_code == 422
+    for field in ({"season": "2026"}, {"end_date": "2026-05-01"}, {"points_win": 3}):  # ya no se capturan
+        r = env.client.patch(f"{API}/tournaments/{t['id']}", json=field, headers=env.as_admin)
+        assert r.status_code == 422, field
     assert env.client.delete(f"{API}/tournaments/{t['id']}", headers=env.as_admin).status_code == 204
     assert env.client.get(f"{API}/tournaments/{t['id']}").status_code == 404
 
@@ -287,6 +288,8 @@ def test_generate_round_robin_schedule():
     rounds = env.client.get(f"{API}/tournaments/{t['id']}/rounds").json()
     assert [r["start_date"] for r in rounds][:2] == ["2026-05-18", "2026-05-25"]
     assert {r["bye_team_id"] for r in rounds} == {team["id"] for team in teams}  # cada equipo descansa una vez
+    tournament = env.client.get(f"{API}/tournaments/{t['id']}").json()
+    assert (tournament["start_date"], tournament["end_date"]) == ("2026-05-18", "2026-06-15")  # lo marca el rol
 
     matches = env.client.get(f"{API}/tournaments/{t['id']}/matches").json()
     assert len({frozenset((m["home_team_id"], m["away_team_id"])) for m in matches}) == 10
@@ -341,3 +344,31 @@ def test_finance_is_admin_only_and_computes_balance():
     r = env.client.patch(f"{API}/finance/movements/{fines[0]['id']}", json={"amount": 100}, headers=env.as_admin)
     assert r.status_code == 200
     assert env.client.delete(f"{API}/finance/movements/{fines[0]['id']}", headers=env.as_admin).status_code == 204
+
+
+def test_schedule_with_weekdays_kickoff_times_and_venue():
+    from datetime import datetime, timezone
+
+    env = Env()
+    t = env.tournament()
+    for name in ("TOROS", "LOBOS", "SNAKES", "CHARS"):
+        env.team(t["id"], name)
+    url = f"{API}/tournaments/{t['id']}/schedule/generate"
+
+    r = env.client.post(url, json={"weekdays": [6]}, headers=env.as_admin)
+    assert r.status_code == 422  # sin fecha de inicio no se pueden programar dias
+
+    body = {"start_date": "2026-05-18", "weekdays": [5, 6], "start_time": "09:00",
+            "match_duration_minutes": 60, "venue": "Campo Norte"}
+    r = env.client.post(url, json=body, headers=env.as_admin)
+    assert r.status_code == 201, r.text
+
+    rounds = env.client.get(f"{API}/tournaments/{t['id']}/rounds").json()
+    assert [x["start_date"] for x in rounds] == ["2026-05-23", "2026-05-24", "2026-05-30"]  # sab, dom, sab
+
+    matches = env.client.get(f"{API}/tournaments/{t['id']}/matches").json()
+    first_round = [m for m in matches if m["round_id"] == rounds[0]["id"]]
+    kickoffs = sorted(datetime.fromisoformat(m["scheduled_at"]).astimezone(timezone.utc) for m in first_round)
+    # 9:00 y 10:00 hora de Ciudad de Mexico (UTC-6), uno tras otro
+    assert kickoffs == [datetime(2026, 5, 23, 15, tzinfo=timezone.utc), datetime(2026, 5, 23, 16, tzinfo=timezone.utc)]
+    assert {m["venue"] for m in matches} == {"Campo Norte"}

@@ -1,4 +1,5 @@
-from datetime import timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from uuid import UUID
 
 from app.application.dto import ScheduleGenerate
@@ -7,7 +8,7 @@ from app.application.services.tournaments import TournamentService
 from app.core.exceptions import ConflictError, ValidationError
 from app.domain.enums import MatchStatus
 from app.domain.repositories import Repositories
-from app.domain.scheduling import round_robin
+from app.domain.scheduling import round_dates, round_robin
 
 
 class ScheduleService:
@@ -26,18 +27,19 @@ class ScheduleService:
         self._clear_existing(tournament_id, data.replace_existing)
 
         plans = round_robin([t.id for t in teams], double_round=data.double_round)
+        dates: list[date | None] = (
+            round_dates(data.start_date, set(data.weekdays or [data.start_date.weekday()]), len(plans))
+            if data.start_date else [None] * len(plans)
+        )
         rounds = self.repos.rounds.create_many([
             {
                 "tournament_id": tournament_id,
                 "number": plan.number,
                 "name": f"Jornada {plan.number}",
-                "start_date": (
-                    data.start_date + timedelta(days=(plan.number - 1) * data.days_between_rounds)
-                    if data.start_date else None
-                ),
+                "start_date": day,
                 "bye_team_id": plan.bye_team_id,
             }
-            for plan in plans
+            for plan, day in zip(plans, dates)
         ])
         round_ids = {r.number: r.id for r in rounds}
         matches = self.repos.matches.create_many([
@@ -46,12 +48,29 @@ class ScheduleService:
                 "round_id": round_ids[plan.number],
                 "home_team_id": fixture.home_team_id,
                 "away_team_id": fixture.away_team_id,
+                "scheduled_at": self._kickoff(data, day, slot),
+                "venue": data.venue or None,
                 "status": MatchStatus.SCHEDULED,
             }
-            for plan in plans
-            for fixture in plan.fixtures
+            for plan, day in zip(plans, dates)
+            for slot, fixture in enumerate(plan.fixtures)
         ])
+        self._set_tournament_dates(tournament_id, rounds)
         return ScheduleResult(rounds_created=len(rounds), matches_created=len(matches))
+
+    @staticmethod
+    def _kickoff(data: ScheduleGenerate, day: date | None, slot: int) -> datetime | None:
+        """Los partidos de la jornada van uno tras otro desde la hora del primero."""
+        if day is None or data.start_time is None:
+            return None
+        first = datetime.combine(day, data.start_time, tzinfo=ZoneInfo(data.timezone))
+        return first + timedelta(minutes=slot * data.match_duration_minutes)
+
+    def _set_tournament_dates(self, tournament_id: UUID, rounds: list) -> None:
+        """El inicio y el fin del torneo los marcan la primera y la ultima jornada del rol."""
+        dates = [r.start_date for r in rounds if r.start_date]
+        if dates:
+            self.repos.tournaments.update(tournament_id, {"start_date": min(dates), "end_date": max(dates)})
 
     def _clear_existing(self, tournament_id: UUID, replace: bool) -> None:
         matches = self.repos.matches.list(filters={"tournament_id": tournament_id})

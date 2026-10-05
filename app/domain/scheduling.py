@@ -7,6 +7,7 @@ local y visitante.
 """
 
 from dataclasses import dataclass
+from datetime import date, timedelta
 from uuid import UUID
 
 
@@ -62,3 +63,18 @@ def round_robin(team_ids: list[UUID], double_round: bool = False) -> list[RoundP
             for p in plans
         ]
     return plans
+
+
+def round_dates(first_day: date, weekdays: set[int], count: int) -> list[date]:
+    """Fechas de `count` jornadas: una por cada dia de juego (0=lunes ... 6=domingo)
+    a partir de `first_day`. Con sabado y domingo, la jornada 1 cae en el primer
+    sabado o domingo disponible, la 2 en el siguiente, y asi sucesivamente."""
+    if not weekdays:
+        raise ValueError("Se necesita al menos un dia de juego")
+    dates: list[date] = []
+    day = first_day
+    while len(dates) < count:
+        if day.weekday() in weekdays:
+            dates.append(day)
+        day += timedelta(days=1)
+    return dates
