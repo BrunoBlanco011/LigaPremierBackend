@@ -372,3 +372,26 @@ def test_schedule_with_weekdays_kickoff_times_and_venue():
     # 9:00 y 10:00 hora de Ciudad de Mexico (UTC-6), uno tras otro
     assert kickoffs == [datetime(2026, 5, 23, 15, tzinfo=timezone.utc), datetime(2026, 5, 23, 16, tzinfo=timezone.utc)]
     assert {m["venue"] for m in matches} == {"Campo Norte"}
+
+
+def test_schedule_max_matches_per_day_spreads_the_round():
+    from datetime import datetime, timezone
+
+    env = Env()
+    t = env.tournament()
+    for name in ("TOROS", "LOBOS", "SNAKES", "CHARS"):
+        env.team(t["id"], name)
+    body = {"start_date": "2026-05-18", "weekdays": [5, 6], "start_time": "10:00", "max_matches_per_day": 1}
+    r = env.client.post(f"{API}/tournaments/{t['id']}/schedule/generate", json=body, headers=env.as_admin)
+    assert r.status_code == 201, r.text
+
+    rounds = env.client.get(f"{API}/tournaments/{t['id']}/rounds").json()
+    # 2 partidos por jornada, 1 por dia: cada jornada es un fin de semana (sabado y domingo)
+    assert [(x["start_date"], x["end_date"]) for x in rounds] == [
+        ("2026-05-23", "2026-05-24"), ("2026-05-30", "2026-05-31"), ("2026-06-06", "2026-06-07")]
+    matches = env.client.get(f"{API}/tournaments/{t['id']}/matches").json()
+    first = sorted(datetime.fromisoformat(m["scheduled_at"]).astimezone(timezone.utc)
+                   for m in matches if m["round_id"] == rounds[0]["id"])
+    assert [(d.day, d.hour) for d in first] == [(23, 16), (24, 16)]  # 10:00 en CDMX = 16:00 UTC
+    tournament = env.client.get(f"{API}/tournaments/{t['id']}").json()
+    assert tournament["end_date"] == "2026-06-07"

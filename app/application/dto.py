@@ -187,7 +187,11 @@ class ScheduleGenerate(Command):
     )
     start_time: time | None = Field(default=None, description="Hora del primer partido de cada jornada")
     match_duration_minutes: int = Field(
-        default=60, ge=10, le=300, description="Los partidos de una jornada se juegan uno tras otro"
+        default=60, ge=10, le=300, description="Los partidos de un mismo dia se juegan uno tras otro"
+    )
+    max_matches_per_day: int | None = Field(
+        default=None, ge=1, le=50,
+        description="Si la jornada tiene mas partidos, sigue en el siguiente dia de juego. Vacio: sin limite",
     )
     venue: str | None = Field(default=None, max_length=120, description="Sede de todos los partidos generados")
     timezone: str = Field(default="America/Mexico_City", description="Zona horaria de start_time")
