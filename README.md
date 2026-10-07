@@ -5,6 +5,8 @@ jornadas, rol de juegos automático, partidos, tabla de posiciones automática, 
 y finanzas.
 
 > Requerimientos funcionales para el frontend: [`docs/REQUERIMIENTOS_FUNCIONALES.md`](docs/REQUERIMIENTOS_FUNCIONALES.md)
+>
+> Medidas de seguridad y checklist de producción: [`docs/SEGURIDAD.md`](docs/SEGURIDAD.md)
 
 **Stack:** FastAPI · Supabase (Postgres + Auth + Storage) · Pydantic v2
 

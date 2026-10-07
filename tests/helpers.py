@@ -2,6 +2,7 @@ import os
 
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-key")
+os.environ.setdefault("RATE_LIMIT_PER_MINUTE", "0")  # los tests hacen cientos de peticiones seguidas
 
 from typing import Annotated  # noqa: E402
 from uuid import UUID  # noqa: E402

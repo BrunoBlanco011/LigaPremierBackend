@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import PurePath
 from uuid import UUID, uuid4
 
 from app.application.actor import Actor
@@ -12,7 +11,19 @@ from app.domain.entities import Club
 from app.domain.enums import UserRole
 from app.domain.repositories import FileStorage, Repositories
 
-ALLOWED_LOGO_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg"}
+# SVG no se acepta: puede contener JavaScript y se sirve desde un bucket publico (XSS)
+ALLOWED_LOGO_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
+
+
+def detect_image_type(content: bytes) -> str | None:
+    """Tipo real del archivo segun sus primeros bytes (no se confia en el content-type del cliente)."""
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return "image/webp"
+    return None
 
 
 class ClubService:
@@ -65,9 +76,7 @@ class ClubService:
         if club.logo_path:
             self.storage.delete(club.logo_path)
 
-    def upload_logo(
-        self, actor: Actor, club_id: UUID, content: bytes, content_type: str | None, filename: str | None
-    ) -> Club:
+    def upload_logo(self, actor: Actor, club_id: UUID, content: bytes, content_type: str | None) -> Club:
         club = self.get(club_id)
         self._ensure_can_manage(actor, club)
         if content_type not in ALLOWED_LOGO_TYPES:
@@ -76,8 +85,11 @@ class ClubService:
             raise ValidationError("El archivo esta vacio")
         if len(content) > self.max_logo_bytes:
             raise ValidationError(f"El logo excede {self.max_logo_bytes // (1024 * 1024)} MB")
+        if detect_image_type(content) != content_type:
+            raise ValidationError("El contenido del archivo no corresponde a una imagen valida")
 
-        extension = PurePath(filename or "").suffix.lower() or ALLOWED_LOGO_TYPES[content_type]
+        # La extension sale del tipo verificado, nunca del nombre que manda el cliente
+        extension = ALLOWED_LOGO_TYPES[content_type]
         # Nombre unico por subida: evita que el CDN sirva el logo anterior desde cache
         path = f"clubs/{club.id}/{uuid4().hex}{extension}"
         url = self.storage.upload(path, content, content_type)

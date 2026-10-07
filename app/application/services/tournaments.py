@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.application.dto import TournamentCreate, TournamentUpdate
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError
 from app.domain.entities import Tournament
 from app.domain.enums import TournamentStatus
 from app.domain.repositories import Repositories
@@ -29,10 +29,6 @@ class TournamentService:
     def update(self, tournament_id: UUID, data: TournamentUpdate) -> Tournament:
         current = self.get(tournament_id)
         changes = data.changes()
-        start = changes.get("start_date", current.start_date)
-        end = changes.get("end_date", current.end_date)
-        if start and end and end < start:
-            raise ValidationError("end_date no puede ser anterior a start_date")
         if not changes:
             return current
         updated = self.repos.tournaments.update(tournament_id, changes)

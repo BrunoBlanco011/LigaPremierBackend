@@ -8,6 +8,8 @@ supabase>=2.10
 PyJWT[crypto]>=2.10
 httpx>=0.28
 truststore>=0.10
+# Zonas horarias IANA (America/Mexico_City) en Windows / imagenes sin tz del sistema
+tzdata>=2024.1
 
 # dev
 pytest>=8.3

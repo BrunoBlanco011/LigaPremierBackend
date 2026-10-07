@@ -35,3 +35,11 @@ class AuthenticationError(AppError):
 
 class PermissionDeniedError(AppError):
     status_code = 403
+
+
+class TooManyRequestsError(AppError):
+    status_code = 429
+
+    def __init__(self, message: str, retry_after: int) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after

@@ -261,7 +261,7 @@ Todas las respuestas de error traen `detail`:
 
 #### RF-22 Logo del club
 - **Endpoint:** `POST /clubs/{id}/logo` (multipart/form-data, campo `file`).
-- Formatos permitidos: PNG, JPG, WEBP y SVG. Tamaño máximo: 2 MB. Validar también en el cliente.
+- Formatos permitidos: PNG, JPG y WEBP (SVG no, por riesgo de XSS; el servidor verifica el contenido real del archivo). Tamaño máximo: 2 MB. Validar también en el cliente.
 - Responde el club con `logo_url` nuevo. Subir otro logo reemplaza el anterior en todos sus torneos.
 - Mostrar una vista previa antes de subir.
 
