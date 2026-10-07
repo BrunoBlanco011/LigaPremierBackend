@@ -37,11 +37,11 @@ def delete_club(club_id: UUID, _: AdminActor, service: Clubs):
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{club_id}/logo", response_model=Club, summary="Subir/reemplazar el logo (png, jpg, webp, svg)")
+@router.post("/{club_id}/logo", response_model=Club, summary="Subir/reemplazar el logo (png, jpg, webp)")
 def upload_logo(club_id: UUID, _: AdminActor, service: Clubs, file: UploadFile = File(...)):
     # Endpoint sincrono: FastAPI lo corre en un threadpool y la subida a Storage no bloquea el event loop
     content = file.file.read(service.max_logo_bytes + 1)
-    return service.upload_logo(club_id, content, file.content_type, file.filename)
+    return service.upload_logo(club_id, content, file.content_type)
 
 
 @router.get("/{club_id}/history", response_model=list[ClubSeason],

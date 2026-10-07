@@ -246,9 +246,20 @@ class RegistrationFeeCreate(Command):
 # ---------------------------------------------------------------- Usuarios
 class UserCreate(Command):
     email: EmailStr
-    password: str = Field(min_length=8, max_length=72)
+    password: str = Field(min_length=10, max_length=72, description="Minimo 10 caracteres, con letras y numeros")
     full_name: str | None = Field(default=None, max_length=120)
     role: UserRole = UserRole.COACH
+
+    @model_validator(mode="after")
+    def _check_password(self):
+        password = self.password
+        if not any(c.isalpha() for c in password) or not any(c.isdigit() for c in password):
+            raise ValueError("La contrasena debe tener letras y numeros")
+        if self.email.split("@")[0].lower() in password.lower():
+            raise ValueError("La contrasena no debe contener el correo")
+        if len(password.encode("utf-8")) > 72:
+            raise ValueError("La contrasena es demasiado larga")
+        return self
 
 
 class UserUpdate(Command):

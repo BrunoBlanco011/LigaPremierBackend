@@ -1,13 +1,18 @@
+import logging
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from app.api.deps import Clubs, CoachActor, CurrentActor, Users
 from app.application.dto import LoginRequest
+from app.core.config import get_settings
+from app.core.exceptions import AuthenticationError, TooManyRequestsError
+from app.core.middleware import client_ip
 from app.domain.entities import Club, Profile
 
 router = APIRouter(tags=["Auth"])
+audit = logging.getLogger("app.audit")
 
 
 class TokenResponse(BaseModel):
@@ -19,8 +24,21 @@ class TokenResponse(BaseModel):
 
 
 @router.post("/auth/login", response_model=TokenResponse, summary="Iniciar sesion (correo y contrasena)")
-def login(data: LoginRequest, users: Users) -> TokenResponse:
-    session = users.login(data)
+def login(data: LoginRequest, request: Request, users: Users) -> TokenResponse:
+    throttle = request.app.state.login_throttle
+    ip = client_ip(request.scope, get_settings().trust_proxy_headers)
+    wait = throttle.retry_after(ip, data.email)
+    if wait:
+        audit.warning("login bloqueado ip=%s email=%s", ip, data.email)
+        raise TooManyRequestsError("Demasiados intentos de inicio de sesion, intenta mas tarde", wait)
+    try:
+        session = users.login(data)
+    except AuthenticationError:
+        throttle.failed(ip, data.email)
+        audit.warning("login fallido ip=%s email=%s", ip, data.email)
+        raise
+    throttle.succeeded(ip, data.email)
+    audit.info("login exitoso ip=%s user=%s", ip, session.user_id)
     return TokenResponse(
         access_token=session.access_token,
         refresh_token=session.refresh_token,

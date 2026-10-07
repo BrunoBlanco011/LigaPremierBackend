@@ -1,6 +1,7 @@
 from tests.helpers import Env
 
 API = "/api/v1"
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32  # firma real de PNG: el servidor verifica el contenido
 
 
 # ------------------------------------------------------------ permisos
@@ -67,7 +68,7 @@ def test_register_clubs_to_tournaments():
     assert env.client.delete(f"{API}/clubs/{toros['id']}", headers=env.as_admin).status_code == 409
 
     # Cambiar el logo del club se refleja en todas sus inscripciones
-    files = {"file": ("logo.png", b"PNG fake", "image/png")}
+    files = {"file": ("logo.png", PNG, "image/png")}
     r = env.client.post(f"{API}/clubs/{toros['id']}/logo", files=files, headers=env.as_admin)
     assert r.status_code == 200 and r.json()["logo_url"].startswith("https://cdn.test/")
     assert env.client.get(f"{API}/teams/{t2_team['id']}").json()["logo_url"] == r.json()["logo_url"]

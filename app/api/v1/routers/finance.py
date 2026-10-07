@@ -1,5 +1,6 @@
 """Modulo de finanzas: todos los endpoints requieren rol admin."""
 
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from app.domain.entities import FinanceMovement
 from app.domain.enums import FinanceMovementType
 
 router = APIRouter(tags=["Finanzas (admin)"])
+audit = logging.getLogger("app.audit")
 
 
 @router.get("/tournaments/{tournament_id}/finance/summary", response_model=FinanceSummary,
@@ -33,23 +35,30 @@ def list_movements(
 
 @router.post("/tournaments/{tournament_id}/finance/movements", response_model=FinanceMovement,
              status_code=status.HTTP_201_CREATED, summary="Registrar cargo (inscripcion, multa, otro) o abono")
-def create_movement(tournament_id: UUID, data: FinanceMovementCreate, _: AdminActor, service: Finance):
-    return service.create(tournament_id, data)
+def create_movement(tournament_id: UUID, data: FinanceMovementCreate, actor: AdminActor, service: Finance):
+    movement = service.create(tournament_id, data)
+    audit.info("finanzas: alta movimiento=%s monto=%s por=%s", movement.id, movement.amount, actor.id)
+    return movement
 
 
 @router.post("/tournaments/{tournament_id}/finance/registration-fees", response_model=list[FinanceMovement],
              status_code=status.HTTP_201_CREATED,
              summary="Cargar la inscripcion a todos los equipos que aun no la tengan")
-def charge_registration_fees(tournament_id: UUID, data: RegistrationFeeCreate, _: AdminActor, service: Finance):
-    return service.charge_registration_fees(tournament_id, data)
+def charge_registration_fees(tournament_id: UUID, data: RegistrationFeeCreate, actor: AdminActor, service: Finance):
+    movements = service.charge_registration_fees(tournament_id, data)
+    audit.info("finanzas: inscripciones torneo=%s cargos=%s por=%s", tournament_id, len(movements), actor.id)
+    return movements
 
 
 @router.patch("/finance/movements/{movement_id}", response_model=FinanceMovement)
-def update_movement(movement_id: UUID, data: FinanceMovementUpdate, _: AdminActor, service: Finance):
-    return service.update(movement_id, data)
+def update_movement(movement_id: UUID, data: FinanceMovementUpdate, actor: AdminActor, service: Finance):
+    movement = service.update(movement_id, data)
+    audit.info("finanzas: cambio movimiento=%s campos=%s por=%s", movement_id, sorted(data.changes()), actor.id)
+    return movement
 
 
 @router.delete("/finance/movements/{movement_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_movement(movement_id: UUID, _: AdminActor, service: Finance):
+def delete_movement(movement_id: UUID, actor: AdminActor, service: Finance):
     service.delete(movement_id)
+    audit.info("finanzas: baja movimiento=%s por=%s", movement_id, actor.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
