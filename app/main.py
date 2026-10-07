@@ -18,6 +18,8 @@ def _configure_logging() -> None:
     # Sin esto los INFO de la bitacora (logger "app.audit") no se escriben en ningun lado
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    # httpx registra cada consulta a Supabase con su URL completa: solo advertencias
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 def create_app() -> FastAPI:
