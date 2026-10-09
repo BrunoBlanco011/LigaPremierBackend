@@ -64,6 +64,8 @@ class Player(Entity):
     club_id: UUID
     full_name: str
     jersey_number: int | None = None
+    # Dato personal: solo lo ven el admin y el coach del club
+    birth_date: date | None = None
     is_active: bool = True
 
 

@@ -96,6 +96,37 @@ def test_club_history():
 
 
 # ------------------------------------------------------------ jugadores / coach
+def test_player_birth_date_is_optional_and_private():
+    env = Env()
+    club = env.club("TOROS JR", coach_user_id=str(env.coach.id))
+    url = f"{API}/clubs/{club['id']}/players"
+
+    r = env.client.post(url, json={"full_name": "Diego Ruiz", "jersey_number": 9, "birth_date": "2012-05-14"},
+                        headers=env.as_coach)
+    assert r.status_code == 201 and r.json()["birth_date"] == "2012-05-14"
+    player = r.json()
+    assert env.client.post(url, json={"full_name": "Sin fecha"}, headers=env.as_coach).json()["birth_date"] is None
+
+    # Fechas imposibles
+    for bad in ("2999-01-01", "1850-01-01", "no-es-fecha"):
+        r = env.client.post(url, json={"full_name": "X", "birth_date": bad}, headers=env.as_coach)
+        assert r.status_code == 422, bad
+
+    # Admin y coach del club la ven; el publico no
+    assert env.client.get(f"{API}/players/{player['id']}", headers=env.as_admin).json()["birth_date"] == "2012-05-14"
+    assert env.client.get(f"{API}/players/{player['id']}", headers=env.as_coach).json()["birth_date"] == "2012-05-14"
+    assert env.client.get(f"{API}/players/{player['id']}").json()["birth_date"] is None
+    assert all(p["birth_date"] is None for p in env.client.get(url).json())
+    assert any(p["birth_date"] for p in env.client.get(url, headers=env.as_coach).json())
+
+    # Se puede corregir y borrar
+    pid = player["id"]
+    r = env.client.patch(f"{API}/players/{pid}", json={"birth_date": "2012-06-01"}, headers=env.as_coach)
+    assert r.json()["birth_date"] == "2012-06-01"
+    r = env.client.patch(f"{API}/players/{pid}", json={"birth_date": None}, headers=env.as_coach)
+    assert r.json()["birth_date"] is None
+
+
 def test_coach_manages_only_own_club_players():
     env = Env()
     mine = env.club("LOBOS", coach_user_id=str(env.coach.id))
@@ -125,8 +156,8 @@ def test_coach_manages_only_own_club_players():
     assert env.client.get(f"{API}/clubs/{mine['id']}/players").json() == []
     assert len(env.client.get(f"{API}/clubs/{mine['id']}/players", headers=env.as_coach).json()) == 1
 
-    # Solo nombre y numero: otros campos se rechazan
-    extra = env.client.post(f"{API}/clubs/{mine['id']}/players", json={"full_name": "X", "birth_date": "2000-01-01"},
+    # Nombre, numero y fecha de nacimiento (opcional): otros campos se rechazan
+    extra = env.client.post(f"{API}/clubs/{mine['id']}/players", json={"full_name": "X", "position": "QB"},
                             headers=env.as_coach)
     assert extra.status_code == 422
 

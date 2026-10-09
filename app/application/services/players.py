@@ -26,15 +26,26 @@ class PlayerService:
         return self.repos.players.list(filters=filters, order_by=["jersey_number", "full_name"])
 
     def list_visible(self, actor: Actor | None, club_id: UUID) -> list[Player]:
-        """El publico ve solo jugadores activos; admin y coach del club ven tambien las bajas."""
+        """El publico ve solo jugadores activos y sin fecha de nacimiento;
+        admin y coach del club ven tambien las bajas y los datos personales."""
         club = self.clubs.get(club_id)
-        return self.list_by_club(club_id, include_inactive=self.can_manage_club(actor, club))
+        if self.can_manage_club(actor, club):
+            return self.list_by_club(club_id)
+        return [self._public(p) for p in self.list_by_club(club_id, include_inactive=False)]
 
     def get(self, player_id: UUID) -> Player:
         player = self.repos.players.get(player_id)
         if player is None:
             raise NotFoundError("Jugador", player_id)
         return player
+
+    def get_visible(self, actor: Actor | None, player_id: UUID) -> Player:
+        player = self.get(player_id)
+        return player if self.can_manage_club(actor, self.clubs.get(player.club_id)) else self._public(player)
+
+    @staticmethod
+    def _public(player: Player) -> Player:
+        return player.model_copy(update={"birth_date": None})
 
     @staticmethod
     def can_manage_club(actor: Actor | None, club: Club) -> bool:

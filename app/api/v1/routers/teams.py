@@ -29,8 +29,8 @@ def list_team_players(team_id: UUID, actor: OptionalActor, teams: Teams, players
 
 # ------------------------------------------------------------ jugadores
 @router.get("/players/{player_id}", response_model=Player, tags=["Jugadores"])
-def get_player(player_id: UUID, service: Players):
-    return service.get(player_id)
+def get_player(player_id: UUID, actor: OptionalActor, service: Players):
+    return service.get_visible(actor, player_id)
 
 
 @router.patch("/players/{player_id}", response_model=Player, tags=["Jugadores"])

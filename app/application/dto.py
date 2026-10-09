@@ -10,7 +10,7 @@ from decimal import Decimal
 from typing import Annotated, Any, ClassVar
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.domain.enums import FinanceMovementType, MatchStatus, TournamentStatus, UserRole
 
@@ -72,9 +72,19 @@ class TeamRegister(Command):
 
 
 # ---------------------------------------------------------------- Jugadores
+def _check_birth_date(value: date | None) -> date | None:
+    if value is not None and not date(1900, 1, 1) <= value <= date.today():
+        raise ValueError("La fecha de nacimiento no puede ser futura ni anterior a 1900")
+    return value
+
+
+BirthDate = Annotated[date | None, AfterValidator(_check_birth_date)]
+
+
 class PlayerCreate(Command):
     full_name: ShortText
     jersey_number: int | None = Field(default=None, ge=0, le=999)
+    birth_date: BirthDate = None
     is_active: bool = True
 
 
@@ -83,6 +93,7 @@ class PlayerUpdate(Command):
 
     full_name: str | None = Field(default=None, min_length=1, max_length=120)
     jersey_number: int | None = Field(default=None, ge=0, le=999)
+    birth_date: BirthDate = None
     is_active: bool | None = None
     club_id: UUID | None = Field(default=None, description="Transferir a otro club (solo admin)")
 
