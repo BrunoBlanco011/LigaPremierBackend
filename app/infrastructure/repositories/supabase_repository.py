@@ -2,19 +2,32 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from typing import Any, Generic, Iterator, TypeVar
 from uuid import UUID
 
+import httpx
 from postgrest.exceptions import APIError
 from pydantic import BaseModel
 from pydantic_core import to_jsonable_python
 from supabase import Client
 
-from app.core.exceptions import AppError, ConflictError, ValidationError
+from app.core.exceptions import AppError, ConflictError, ServiceUnavailableError, ValidationError
 
 T = TypeVar("T", bound=BaseModel)
+logger = logging.getLogger("app.db")
+
+# Supabase cierra las conexiones inactivas: la siguiente consulta que viaja por una de ellas falla
+# con "Server disconnected". Se reintenta en una conexion nueva.
+_TRANSIENT = (httpx.RemoteProtocolError, httpx.ConnectError, httpx.ConnectTimeout,
+              httpx.ReadError, httpx.WriteError, httpx.PoolTimeout)
+# La peticion nunca salio: es seguro reintentar incluso un insert
+_NOT_SENT = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
+RETRIES = 2
+RETRY_DELAY_SECONDS = 0.2
 
 # https://www.postgresql.org/docs/current/errcodes-appendix.html
 _PG_ERRORS: dict[str, tuple[type[AppError], str]] = {
@@ -34,6 +47,26 @@ def translate_errors() -> Iterator[None]:
         error_cls, message = _PG_ERRORS.get(exc.code or "", (AppError, "Error de base de datos"))
         detail = f"{message}: {exc.details or exc.message}" if (exc.details or exc.message) else message
         raise error_cls(detail) from exc
+    except _TRANSIENT as exc:
+        logger.error("Supabase no respondio: %r", exc)
+        raise ServiceUnavailableError("No se pudo conectar con la base de datos, intenta de nuevo") from exc
+
+
+def _execute(query: Any, *, idempotent: bool = True) -> Any:
+    """Ejecuta la consulta reintentando los cortes de conexion.
+
+    Un insert solo se repite si la peticion no llego a salir: si la conexion se corto a medio
+    camino no se sabe si Supabase alcanzo a guardarlo y reintentar podria duplicar el registro.
+    """
+    for attempt in range(RETRIES + 1):
+        try:
+            return query.execute()
+        except _TRANSIENT as exc:
+            if attempt == RETRIES or not (idempotent or isinstance(exc, _NOT_SENT)):
+                raise
+            logger.warning("Conexion con Supabase cortada (%s); reintento %d de %d",
+                           type(exc).__name__, attempt + 1, RETRIES)
+            time.sleep(RETRY_DELAY_SECONDS * (attempt + 1))
 
 
 def _json(data: Any) -> Any:
@@ -69,7 +102,7 @@ class SupabaseRepository(Generic[T]):
 
     def get(self, entity_id: UUID) -> T | None:
         with translate_errors():
-            response = self._read_query().select("*").eq("id", str(entity_id)).limit(1).execute()
+            response = _execute(self._read_query().select("*").eq("id", str(entity_id)).limit(1))
         rows = self._parse(response.data)
         return rows[0] if rows else None
 
@@ -91,35 +124,37 @@ class SupabaseRepository(Generic[T]):
             desc = column.startswith("-")
             query = query.order(column.lstrip("-"), desc=desc, nullsfirst=False)
         with translate_errors():
-            response = query.execute()
+            response = _execute(query)
         return self._parse(response.data)
 
     def create(self, data: Mapping[str, Any]) -> T:
         with translate_errors():
-            response = self._query().insert(_json(dict(data))).execute()
+            response = _execute(self._query().insert(_json(dict(data))), idempotent=False)
         return self._reread(response.data)[0]
 
     def create_many(self, rows: Sequence[Mapping[str, Any]]) -> list[T]:
         if not rows:
             return []
         with translate_errors():
-            response = self._query().insert(_json([dict(r) for r in rows])).execute()
+            response = _execute(self._query().insert(_json([dict(r) for r in rows])), idempotent=False)
         return self._reread(response.data)
 
     def update(self, entity_id: UUID, data: Mapping[str, Any]) -> T | None:
         with translate_errors():
-            response = self._query().update(_json(dict(data))).eq("id", str(entity_id)).execute()
+            response = _execute(self._query().update(_json(dict(data))).eq("id", str(entity_id)))
         rows = self._reread(response.data)
         return rows[0] if rows else None
 
     def delete(self, entity_id: UUID) -> bool:
         with translate_errors():
-            response = self._query().delete().eq("id", str(entity_id)).execute()
+            response = _execute(self._query().delete().eq("id", str(entity_id)))
         return bool(response.data)
 
     def upsert_many(self, rows: Sequence[Mapping[str, Any]], on_conflict: Sequence[str]) -> list[T]:
         if not rows:
             return []
         with translate_errors():
-            response = self._query().upsert(_json([dict(r) for r in rows]), on_conflict=",".join(on_conflict)).execute()
+            response = _execute(
+                self._query().upsert(_json([dict(r) for r in rows]), on_conflict=",".join(on_conflict))
+            )
         return self._reread(response.data)
