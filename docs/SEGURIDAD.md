@@ -128,6 +128,14 @@ Con `TRUST_PROXY_HEADERS=true` se usa la **última** IP de `X-Forwarded-For` (la
 no la primera, que el cliente puede falsificar para evadir los límites. Actívalo **solo** si la API está detrás
 de un proxy propio (Nginx, Render, Railway, Fly…); si está expuesta directo, déjalo en `false`.
 
+### WebSocket en tiempo real (nuevo)
+
+`/api/v1/ws` es público y **solo anuncia qué recurso cambió**, nunca los datos: quien recibe un aviso tiene
+que pedir la información por HTTP con sus propios permisos. Usuarios, login, finanzas e invitaciones (su ruta lleva el token secreto) no se anuncian.
+CORS no aplica a WebSockets, así que el `Origin` se valida a mano contra `CORS_ORIGINS` (`1008` si no coincide).
+Límite de conexiones simultáneas en total (`WS_MAX_CONNECTIONS`) y por IP (`WS_MAX_CONNECTIONS_PER_IP`) → `1013`;
+un cliente que no lee sus mensajes se desconecta en vez de acumular memoria.
+
 ### Errores sin fugas de información (nuevo)
 
 Cualquier excepción no controlada devuelve `500 {"detail": "Error interno del servidor"}`; la traza completa
@@ -183,6 +191,8 @@ Nunca se registran contraseñas ni tokens.
 | `RATE_LIMIT_PER_MINUTE` | `300` | ajustar según tráfico |
 | `LOGIN_MAX_ATTEMPTS` | `5` | `5` |
 | `LOGIN_WINDOW_SECONDS` | `900` | `900` |
+| `WS_MAX_CONNECTIONS` | `1000` | ajustar según tráfico |
+| `WS_MAX_CONNECTIONS_PER_IP` | `20` | `20` |
 
 ---
 

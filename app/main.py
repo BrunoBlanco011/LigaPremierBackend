@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.core.exceptions import AppError, TooManyRequestsError
 from app.core.middleware import BodySizeLimitMiddleware, RateLimitMiddleware, SecurityHeadersMiddleware
 from app.core.rate_limit import LoginThrottle
+from app.core.realtime import RealtimeEventsMiddleware, RealtimeHub
 
 logger = logging.getLogger("app")
 
@@ -39,9 +40,11 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json" if settings.show_docs else None,
     )
     app.state.login_throttle = LoginThrottle(settings.login_max_attempts, settings.login_window_seconds)
+    app.state.realtime = RealtimeHub(settings.ws_max_connections, settings.ws_max_connections_per_ip)
 
     # El ultimo middleware agregado es el mas externo:
-    # cabeceras de seguridad -> CORS -> hosts -> rate limit -> tamano del cuerpo -> app
+    # cabeceras de seguridad -> CORS -> hosts -> rate limit -> tamano del cuerpo -> eventos en vivo -> app
+    app.add_middleware(RealtimeEventsMiddleware, hub=app.state.realtime, prefix=settings.api_v1_prefix)
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_mb * 1024 * 1024)
     if settings.rate_limit_per_minute > 0:
         app.add_middleware(RateLimitMiddleware, per_minute=settings.rate_limit_per_minute,

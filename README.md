@@ -99,3 +99,33 @@ pytest
 
 Estadísticas por jugador (basadas en la hoja del ROL DE JUEGOS): asistencia, anotaciones (`touchdowns`),
 pases de anotación (`td_passes`), intercepciones, capturas (`sacks`) y tackles.
+
+## Tiempo real (WebSocket)
+
+`ws://<host>/api/v1/ws` (o `wss://` con HTTPS) avisa a todos los clientes conectados cada vez que alguien
+modifica datos. El mensaje solo dice **qué** cambió; el frontend vuelve a pedir por HTTP lo que tenga en pantalla.
+
+```json
+{"type": "hello"}
+{"type": "change", "resource": "matches", "action": "updated", "id": "<uuid>",
+ "tournament_id": null, "path": "/api/v1/matches/<uuid>/result"}
+```
+
+- `resource`: `tournaments`, `clubs`, `teams`, `players`, `rounds`, `matches`, `standings`,
+  `standing-adjustments`, `schedule`… (`tournament_id` viene cuando la ruta es `/tournaments/{id}/...`).
+- `action`: `created`, `updated` o `deleted`. Solo se anuncian escrituras que respondieron 2xx.
+- Un resultado o ajuste cambia la tabla y las estadísticas: al recibir `matches` o `standing-adjustments`
+  conviene refrescar también la tabla de posiciones.
+- No se anuncian usuarios, login, finanzas ni invitaciones (datos privados o con el token del link).
+- Mandar el texto `ping` responde `{"type": "pong"}`. Si la conexión se cae, el cliente debe reconectar.
+
+```js
+const ws = new WebSocket(`${API_URL.replace(/^http/, "ws")}/api/v1/ws`);
+ws.onmessage = ({ data }) => {
+  const msg = JSON.parse(data);
+  if (msg.type === "change") refetch(msg.resource, msg.tournament_id);
+};
+```
+
+El canal vive en memoria del proceso: con varios workers de uvicorn cada uno solo avisa a sus propios clientes
+(para eso haría falta un bus compartido, p. ej. Redis o Supabase Realtime).

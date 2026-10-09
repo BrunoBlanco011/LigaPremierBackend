@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # Intentos de login fallidos permitidos por IP+correo en la ventana
     login_max_attempts: int = 5
     login_window_seconds: int = 900
+    # Clientes WebSocket (/api/v1/ws) simultaneos: en total y por IP
+    ws_max_connections: int = 1000
+    ws_max_connections_per_ip: int = 20
 
     @field_validator("cors_origins", "allowed_hosts", mode="before")
     @classmethod
