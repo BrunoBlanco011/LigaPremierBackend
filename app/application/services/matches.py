@@ -4,7 +4,14 @@ from typing import Any
 from uuid import UUID
 
 from app.application.dto import MatchCreate, MatchResult, MatchUpdate
-from app.application.read_models import MatchView, RoundSummary, TeamSummary
+from app.application.read_models import (
+    MatchView,
+    RefereeSheet,
+    RefereeSheetPlayer,
+    RefereeSheetTeam,
+    RoundSummary,
+    TeamSummary,
+)
 from app.application.services.tournaments import TournamentService
 from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.entities import Match
@@ -46,6 +53,31 @@ class MatchService:
 
     def get_view(self, match_id: UUID) -> MatchView:
         return self._to_views([self.get(match_id)])[0]
+
+    def referee_sheet(self, match_id: UUID) -> RefereeSheet:
+        """Cedula de referees: los dos equipos con sus jugadores activos (por numero)."""
+        match = self.get_view(match_id)
+        tournament = self.tournaments.get(match.tournament_id)
+        teams = {t.id: t for t in self.repos.teams.list(in_filters={"id": [match.home_team_id, match.away_team_id]})}
+
+        def sheet_team(team_id: UUID) -> RefereeSheetTeam:
+            team = teams[team_id]
+            players = self.repos.players.list(filters={"club_id": team.club_id, "is_active": True},
+                                              order_by=["jersey_number", "full_name"])
+            return RefereeSheetTeam(
+                name=team.name,
+                players=[RefereeSheetPlayer(jersey_number=p.jersey_number, full_name=p.full_name) for p in players],
+            )
+
+        return RefereeSheet(
+            tournament_name=tournament.name,
+            category=tournament.category,
+            round=match.round,
+            scheduled_at=match.scheduled_at,
+            venue=match.venue,
+            home=sheet_team(match.home_team_id),
+            away=sheet_team(match.away_team_id),
+        )
 
     # ------------------------------------------------------------ escritura
     def create(self, tournament_id: UUID, data: MatchCreate) -> MatchView:

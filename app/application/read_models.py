@@ -105,3 +105,25 @@ class ClubInviteInfo(BaseModel):
 
     club: TeamSummary
     expires_at: datetime
+
+
+class RefereeSheetPlayer(BaseModel):
+    jersey_number: int | None = None
+    full_name: str
+
+
+class RefereeSheetTeam(BaseModel):
+    name: str
+    players: list[RefereeSheetPlayer]
+
+
+class RefereeSheet(BaseModel):
+    """Datos de la cedula que llenan los referees durante el partido."""
+
+    tournament_name: str
+    category: str | None = None
+    round: RoundSummary | None = None
+    scheduled_at: datetime | None = None
+    venue: str | None = None
+    home: RefereeSheetTeam
+    away: RefereeSheetTeam

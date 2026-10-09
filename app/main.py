@@ -62,7 +62,7 @@ def create_app() -> FastAPI:
             allow_credentials=False,
             allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
             allow_headers=["Authorization", "Content-Type"],
-            expose_headers=["Retry-After"],
+            expose_headers=["Retry-After", "Content-Disposition"],
             max_age=600,
         )
     app.add_middleware(SecurityHeadersMiddleware, hsts=settings.is_production)

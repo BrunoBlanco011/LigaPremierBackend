@@ -5,6 +5,7 @@ from fastapi import APIRouter, Response, status
 from app.api.deps import AdminActor, Matches, Rounds, Standings, Stats
 from app.application.dto import AdjustmentUpdate, MatchResult, MatchUpdate, PlayerStatLine, RoundUpdate
 from app.application.read_models import MatchView, PlayerStatsDetail
+from app.infrastructure.referee_sheet import XLSX_MEDIA_TYPE, referee_sheet_filename, render_referee_sheet
 from app.domain.entities import PlayerMatchStats, Round, StandingAdjustment
 
 router = APIRouter()
@@ -43,6 +44,18 @@ def update_match(match_id: UUID, data: MatchUpdate, _: AdminActor, service: Matc
             summary="Capturar o corregir el resultado (actualiza la tabla automaticamente)")
 def set_match_result(match_id: UUID, data: MatchResult, _: AdminActor, service: Matches):
     return service.set_result(match_id, data)
+
+
+@router.get("/matches/{match_id}/referee-sheet", tags=["Partidos"], response_class=Response,
+            responses={200: {"content": {XLSX_MEDIA_TYPE: {}}, "description": "Archivo .xlsx"}},
+            summary="Descargar la cedula de referees en Excel (con la plantilla de jugadores de ambos equipos)")
+def referee_sheet(match_id: UUID, _: AdminActor, service: Matches):
+    sheet = service.referee_sheet(match_id)
+    return Response(
+        content=render_referee_sheet(sheet),
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{referee_sheet_filename(sheet)}"'},
+    )
 
 
 @router.delete("/matches/{match_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Partidos"])

@@ -5,3 +5,5 @@ __pycache__/
 venv/
 .pytest_cache/
 *.xlsx
+# Plantilla de la cedula sin datos personales
+!app/infrastructure/templates/*.xlsx
