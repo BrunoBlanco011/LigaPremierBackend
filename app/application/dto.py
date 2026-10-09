@@ -246,7 +246,7 @@ class RegistrationFeeCreate(Command):
 # ---------------------------------------------------------------- Usuarios
 class UserCreate(Command):
     email: EmailStr
-    password: str = Field(min_length=10, max_length=72, description="Minimo 10 caracteres, con letras y numeros")
+    password: str = Field(min_length=8, max_length=72, description="Minimo 8 caracteres, con letras y numeros")
     full_name: str | None = Field(default=None, max_length=120)
     role: UserRole = UserRole.COACH
 
