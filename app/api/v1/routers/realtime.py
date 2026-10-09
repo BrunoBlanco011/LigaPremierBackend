@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
@@ -7,6 +8,7 @@ from app.core.middleware import client_ip
 from app.core.realtime import RealtimeHub
 
 router = APIRouter()
+logger = logging.getLogger("app.security")
 
 
 def _origin_allowed(websocket: WebSocket) -> bool:
@@ -21,12 +23,15 @@ def _origin_allowed(websocket: WebSocket) -> bool:
 async def realtime_updates(websocket: WebSocket) -> None:
     """Canal publico de cambios. Mensajes del servidor: `hello`, `change` y `pong` (si el cliente manda "ping")."""
     if not _origin_allowed(websocket):
+        logger.warning("WebSocket rechazado: origen no permitido %r (agregalo a CORS_ORIGINS)",
+                       websocket.headers.get("origin"))
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
     hub: RealtimeHub = websocket.app.state.realtime
     subscriber = hub.subscribe(client_ip(websocket.scope, get_settings().trust_proxy_headers))
     if subscriber is None:
+        logger.warning("WebSocket rechazado: limite de conexiones (%d abiertas)", hub.connections)
         await websocket.close(code=status.WS_1013_TRY_AGAIN_LATER)
         return
 
