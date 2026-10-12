@@ -129,3 +129,19 @@ ws.onmessage = ({ data }) => {
 
 El canal vive en memoria del proceso: con varios workers de uvicorn cada uno solo avisa a sus propios clientes
 (para eso haría falta un bus compartido, p. ej. Redis o Supabase Realtime).
+
+## Despliegue (VPS Ubuntu 24.04)
+
+Archivos en `deploy/`: uvicorn con **un solo worker** bajo systemd (`ligapremier-api`), detrás de Nginx en el
+puerto 80 (incluye el WebSocket `/api/v1/ws`). El código vive en `/opt/ligapremier/backend` y corre con el
+usuario de sistema `ligapremier`.
+
+1. Instalación inicial (como root): `bash setup_server.sh` (instala paquetes, clona el repo, crea el venv,
+   systemd, Nginx y el firewall `ufw` con 22/80/443).
+2. Copia el `.env` de producción a `/opt/ligapremier/backend/.env` (`chmod 600`, dueño `ligapremier`) con
+   `ENVIRONMENT=production`, `TRUST_PROXY_HEADERS=true`, `ALLOWED_HOSTS` y `CORS_ORIGINS` reales.
+3. Actualizar después de un push a `main`: `bash /opt/ligapremier/backend/deploy/update.sh`.
+4. HTTPS cuando haya dominio: apunta el DNS al servidor, pon el dominio en `server_name`, `ALLOWED_HOSTS` y
+   `CORS_ORIGINS`, y corre `certbot --nginx -d <dominio>`.
+
+Logs: `journalctl -u ligapremier-api -f`.

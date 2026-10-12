@@ -1,0 +1,28 @@
+# /etc/systemd/system/ligapremier-api.service
+# Un solo worker: el canal WebSocket y el rate limit viven en memoria del proceso
+[Unit]
+Description=Liga Premier API (FastAPI + uvicorn)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ligapremier
+Group=ligapremier
+WorkingDirectory=/opt/ligapremier/backend
+EnvironmentFile=/opt/ligapremier/backend/.env
+ExecStart=/opt/ligapremier/venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 --port 8000 --workers 1 \
+    --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-server-header
+Restart=always
+RestartSec=3
+
+# Endurecimiento: el proceso solo puede escribir en su propio directorio temporal
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target
