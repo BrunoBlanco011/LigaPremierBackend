@@ -141,7 +141,8 @@ usuario de sistema `ligapremier`.
 2. Copia el `.env` de producción a `/opt/ligapremier/backend/.env` (`chmod 600`, dueño `ligapremier`) con
    `ENVIRONMENT=production`, `TRUST_PROXY_HEADERS=true`, `ALLOWED_HOSTS` y `CORS_ORIGINS` reales.
 3. Actualizar después de un push a `main`: `bash /opt/ligapremier/backend/deploy/update.sh`.
-4. HTTPS cuando haya dominio: apunta el DNS al servidor, pon el dominio en `server_name`, `ALLOWED_HOSTS` y
-   `CORS_ORIGINS`, y corre `certbot --nginx -d <dominio>`.
+4. HTTPS: el registro DNS `api.ligapremierflag.site` apunta al servidor y `certbot --nginx -d api.ligapremierflag.site`
+   agrega el bloque 443 (se renueva solo). Si vuelves a correr `setup_server.sh`, se reinstala el `.conf` sin HTTPS:
+   repite el comando de certbot.
 
 Logs: `journalctl -u ligapremier-api -f`.
