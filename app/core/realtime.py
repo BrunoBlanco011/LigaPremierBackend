@@ -34,6 +34,10 @@ def build_change_event(method: str, path: str, prefix: str) -> Event | None:
     if action is None or not path.startswith(prefix + "/"):
         return None
     segments = [s for s in path[len(prefix):].split("/") if s]
+    # Alta de un jugador por link de invitacion: se anuncia sin el token secreto de la ruta
+    if method == "POST" and len(segments) == 3 and segments[0] == "invites" and segments[2] == "players":
+        return {"type": "change", "resource": "players", "action": "created",
+                "id": None, "tournament_id": None, "path": None}
     if not segments or _PRIVATE_RESOURCES.intersection(segments):
         return None
 

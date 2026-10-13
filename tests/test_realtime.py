@@ -41,6 +41,19 @@ def test_ws_skips_private_resources():
         assert ws.receive_json() == {"type": "pong"}
 
 
+def test_ws_announces_player_registered_by_invite():
+    env = Env()
+    club = env.club("TOROS")
+    token = env.client.post(f"{API}/clubs/{club['id']}/invites", headers=env.as_admin).json()["token"]
+    with env.client.websocket_connect(f"{API}/ws") as ws:
+        ws.receive_json()
+        r = env.client.post(f"{API}/invites/{token}/players", json={"full_name": "Juan Perez", "jersey_number": 7})
+        assert r.status_code == 201
+        event = ws.receive_json()
+        assert event["resource"] == "players" and event["action"] == "created"
+        assert token not in str(event)
+
+
 def test_change_event_shapes():
     assert build_change_event("POST", f"{API}/tournaments/abc/matches", API) == {
         "type": "change", "resource": "matches", "action": "created", "id": None,
@@ -51,8 +64,13 @@ def test_change_event_shapes():
     assert build_change_event("POST", f"{API}/auth/login", API) is None
     assert build_change_event("PATCH", f"{API}/users/u1", API) is None
     assert build_change_event("PATCH", f"{API}/finance/movements/x", API) is None
-    assert build_change_event("POST", f"{API}/invites/secreto/players", API) is None
+    # El alta por invitacion se anuncia, pero el token nunca sale en el evento
+    assert build_change_event("POST", f"{API}/invites/secreto/players", API) == {
+        "type": "change", "resource": "players", "action": "created", "id": None,
+        "tournament_id": None, "path": None}
+    assert build_change_event("GET", f"{API}/invites/secreto", API) is None
     assert build_change_event("POST", f"{API}/clubs/c1/invites", API) is None
+    assert build_change_event("DELETE", f"{API}/invites/secreto", API) is None
 
 
 def test_ws_rejects_foreign_origin_and_limits_connections():
