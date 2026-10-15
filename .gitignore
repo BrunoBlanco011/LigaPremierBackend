@@ -7,3 +7,6 @@ venv/
 *.xlsx
 # Plantilla de la cedula sin datos personales
 !app/infrastructure/templates/*.xlsx
+
+# Ajustes locales de Claude Code
+.claude/settings.local.json
