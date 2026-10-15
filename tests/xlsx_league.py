@@ -302,7 +302,7 @@ def clean(league: League) -> tuple[League, list[str]]:
 
 def expected_standings(teams: list[str], matches: list[SheetMatch]) -> list[SheetStanding]:
     """Tabla calculada a mano, independiente del codigo de la app: 2 puntos por victoria,
-    forfeit 21-0 y desempate puntos -> a favor -> diferencia -> menos en contra -> nombre."""
+    forfeit 21-0 y desempate puntos -> diferencia -> a favor -> menos en contra -> nombre."""
     rows = {t: SheetStanding(t, 0, 0, 0, 0, 0, 0, 0) for t in teams}
     for m in matches:
         if m.status == "forfeit":
@@ -325,7 +325,7 @@ def expected_standings(teams: list[str], matches: list[SheetMatch]) -> list[Shee
             else:
                 row.lost += 1
     ordered = sorted(rows.values(), key=lambda r: (
-        -r.points, -r.points_for, -(r.points_for - r.points_against), r.points_against, r.team))
+        -r.points, -(r.points_for - r.points_against), -r.points_for, r.points_against, r.team))
     for i, row in enumerate(ordered, 1):
         row.position = i
     return ordered

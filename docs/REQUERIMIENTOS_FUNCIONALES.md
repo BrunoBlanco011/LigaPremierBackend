@@ -167,7 +167,7 @@ Todas las respuestas de error traen `detail`:
 
 - Si `adjustment_points ≠ 0`, mostrar un indicador junto a los puntos (ej. "−2 *") con tooltip que
   liste `adjustment_reasons` (ej. "Adeudo de arbitraje").
-- Criterios de orden (mostrar al pie de la tabla): **puntos → puntos a favor → diferencia → menos
+- Criterios de orden (mostrar al pie de la tabla): **puntos → diferencia → puntos a favor → menos
   puntos en contra**.
 
 ### RF-13 Rol de juegos (calendario)
@@ -431,7 +431,7 @@ Reproduce la sección de finanzas del Excel: **Inscripción + Multas − Abonos 
    los jugadores **activos** de un club.
 8. Un coach solo administra los jugadores de los clubes donde es `coach_user_id`.
 9. Finanzas: adeudo = inscripción + multas + otros cargos − abonos. Solo el admin lo ve.
-10. **Desempate en la tabla:** puntos → puntos a favor → diferencia → menos puntos en contra.
+10. **Desempate en la tabla:** puntos → diferencia → puntos a favor → menos puntos en contra.
 
 ---
 

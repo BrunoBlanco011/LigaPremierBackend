@@ -213,8 +213,9 @@ def test_standings_from_real_results():
     keys = ("position", "played", "won", "lost", "points_for", "points_against", "points")
     for row in lg.standings:
         assert tuple(table[row.team][k] for k in keys) == tuple(getattr(row, k) for k in keys), row.team
-    # Empate a 6 puntos entre CHARS, OLD STAR y TUNE SQUAD: desempata puntos a favor
-    assert [t for t in table if table[t]["points"] == 6] == ["CHARS", "OLD STAR", "TUNE SQUAD"]
+    # Empate a 6 puntos entre OLD STAR (-11), CHARS (-40) y TUNE SQUAD (-130): desempata la diferencia,
+    # aunque CHARS tenga mas puntos a favor que OLD STAR
+    assert [t for t in table if table[t]["points"] == 6] == ["OLD STAR", "CHARS", "TUNE SQUAD"]
 
     # Corregir un resultado mueve la tabla al momento
     m, api = next((m, api) for m, api in s.matches if m.home == "DOLPHINS" and m.status == "finished")
